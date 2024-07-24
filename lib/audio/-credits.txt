@@ -1,0 +1,52 @@
+All provided samples are for demonstration purpose only and should not be used in creative and/or commercial work.
+
+Constanzo-PreparedSnare-M.wav
+  - prepared snare recorded by Rodrigo Constanzo, Portugal, 2018
+
+Green-Box639.wav
+Green-Box641.wav
+  - Owen Green (bowed cardboard box) recorded by Sean Williams 26 June 2013, Anechoic Chamber, University of Edinburgh, with the support of the Leverhulme Trust
+
+Harker-DS-TenOboeMultiphonics-M.wav
+  - oboe multiphonics recorded by Niamh Dell for the piece 'Drift Shadow' by Alex Harker, Huddersfield, 2021
+
+Nicol-LoopE-M.wav
+  - Jean-Sébastien Nicol (drums) recorded by Pierre Alexandre Tremblay at Université de Montréal, 1998
+
+Olencki-TenTromboneLongTones-M.wav
+  - trombone long tones recorded by Weston Olencki, Brattleboro, 2021
+
+Tremblay-AaS-AcBassGuit-Melo-M.wav
+Tremblay-AaS-AcousticStrums-M.wav
+Tremblay-AaS-SynthTwoVoices-M.wav
+Tremblay-AaS-VoiceQC-B2K-M.wav
+  - sound sources for the piece 'Attempts at Stillness', Pierre Alexandre Tremblay, 2017
+
+Tremblay-ASWINE-ScratchySynth-M.wav
+  - sound source for the piece 'asinglewordisnotenough', Pierre Alexandre Tremblay, 2015
+
+Tremblay-BaB-HumDC-M.wav
+  - sound source for the piece 'Bucolic & Broken', Pierre Alexandre Tremblay, 2017
+
+Tremblay-BaB-SoundfielGolcarWithDog.wav
+  - soundfield recording, Golcar, UK, 4th March 2017, for the piece 'Bucolic & Broken', Pierre Alexandre Tremblay, 2017
+
+Tremblay-BeatRemember.wav
+  - Lucas Garnier (trumpet) Sylvain Pohu (guitar) produced by Pierre Alexandre Tremblay, 2001
+
+Tremblay-CEL-GlitchyMusicBoxMelo.wav
+  - sound source for the piece 'Ces énigmes lumineuses', Pierre Alexandre Tremblay, 2010
+
+Tremblay-CF-ChurchBells.wav
+  - sound sources for the piece 'La cloche fêlée', recorded in Ephraim Scott Memorial Presbyterian Church, Montreal, by Pierre Alexandre Tremblay, 2003
+
+Tremblay-FMTriDist-M.wav
+Tremblay-Iterative-M.wav
+Tremblay-SlideChoirAdd-M.wav
+  - examples devised as difficult to segment. Some might end up in a piece.
+
+Tremblay-SA-UprightPianoPedalWide.wav
+  - sound sources for the piece 'Still, Again', Pierre Alexandre Tremblay, 2013
+
+Tremblay-UW-ComplexDescent-M.wav
+  - sound source for the piece '(un)woven', Pierre Alexandre Tremblay, 2019
