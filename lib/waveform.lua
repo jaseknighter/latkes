@@ -17,11 +17,11 @@ function Waveform.load(path,max_len)
     if ch > 0 and samples > 0 then
       softcut.buffer_clear()
       clock.run(function()
-        -- print(path,samples)
         softcut.buffer_read_mono(path, 0, 1, -1, 1, 1, 0, 1)
         local len = (samples / 48000)
         local waveform_start = 1
         local waveform_end = max_len and math.min(max_len,len) or len
+        print("path,samples,max_len",path,samples,max_len,waveform_start, waveform_end)
         softcut.render_buffer(1, waveform_start, waveform_end, 127)
       end)
     end
@@ -62,7 +62,7 @@ function Waveform:display_slices(slices)
   for i=#slices/2, 1, -1 do
     local ix_left = (i*2)-1
     local ix_right = i*2
-    local slice_pos1 = math.floor(util.linlin(0,127, self.composition_left,self.composition_right, slices[ix_left]*127))
+    local slice_pos1 = math.floor(util.linlin(1,127, self.composition_left,self.composition_right, slices[ix_left]*127))
     local slice_pos2 = math.ceil(util.linlin(0,127, self.composition_left,self.composition_right, slices[ix_right]*127))
     -- local slice_num = math.floor((i+1)/2)
     -- local selected_slice = params:get(params:get("selected_sample").."selected_gslice"..params:get(params:get("selected_sample").."scene"))
@@ -89,7 +89,7 @@ end
 function Waveform:display_waveform()
   local x_pos = 0
   
-  screen.level(3)
+  screen.level(10)
   local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
   for i,s in ipairs(self.waveform_samples) do
     local height = util.round(math.abs(s) * ((self.composition_top-self.composition_bottom)))

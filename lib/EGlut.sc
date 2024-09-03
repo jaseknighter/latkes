@@ -61,8 +61,10 @@ EGlut {
 			if (File.exists(path), {
 				// load stereo files and duplicate GrainBuf for stereo granulation
         var newbuf,newbuf2;
+        var buflen=60;
         ["read disk"].postln;
-        newbuf = Buffer.readChannel(context.server, path, 0, -1, [0], {
+        // newbuf = Buffer.readChannel(context.server, path, 0, -1, [0], {
+        newbuf = Buffer.readChannel(context.server, path, 0, s.sampleRate * buflen, [0], {
           // if (buffers[i].sampleRate!=nil,{
           //   buffers[i].free;
           // });
@@ -122,13 +124,13 @@ EGlut {
       arg in=0,out=0,phase,
           buf=0, rate=1,
           pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=1,
-          dry_wet=1,
+          // dry_wet=1,
           write_live_stream_enabled=1,
           rec_level=1,pre_level=0;
       var buf_dur,buf_pos;
       var sig=SoundIn.ar(in);
-	    var dry_sig=LinLin.kr(dry_wet,1,0,0,1);
-      var wet_sig=LinLin.kr(dry_wet,0,1,0,1);
+	    // var dry_sig=LinLin.kr(dry_wet,1,0,0,1);
+      // var wet_sig=LinLin.kr(dry_wet,0,1,0,1);
       var rec_pos;
 
       buf_dur = BufDur.kr(buf);
@@ -136,10 +138,11 @@ EGlut {
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
         start:buf_pos_start, end:buf_pos_end, resetPos: pos);
 
-      dry_sig=min(1,dry_sig);
-      wet_sig=max(0,wet_sig);
-
-      RecordBuf.ar(sig*wet_sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
+      // dry_sig=min(1,dry_sig);
+      // wet_sig=max(0,wet_sig);
+      // RecordBuf.ar(sig*wet_sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
+      
+      RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
       
       Out.kr(rec_phase.index, buf_pos);
       // Out.ar(out,sig*dry_sig);
@@ -148,15 +151,16 @@ EGlut {
     SynthDef(\synth, {
       arg voice, out, effectBus, phase_out, level_out, buf, buf2,
       gate=0, pos=0, buf_pos_start=0, buf_pos_end=1, speed=1, jitter=0, spread_sig=0, voice_pan=0,	
-      size=0.1, density=20, pitch=1, spread_pan=0, gain=1, envscale=1,
+      size=0.1, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
       freeze=0, t_reset_pos=0, cutoff=20000, q, send=0, 
       ptr_delay=0.2,sync_to_rec_head=1,
       // mode=0, 
       subharmonics=0,overtones=0, gr_envbuf = -1,
       spread_sig_offset1=0, spread_sig_offset2=0, spread_sig_offset3=0;
 
-      var grain_trig;
+      var grain_trig=1;
       var trig_rnd;
+      var density_jitter_sig;
       var jitter_sig, jitter_sig2, jitter_sig3, jitter_sig4;
       var sig_pos1, sig_pos2, sig_pos3, sig_pos4;
       var buf_dur;
@@ -175,7 +179,10 @@ EGlut {
       var maxgraindur=ptr_delay/speed.abs;
       var ptr;
 
-      density = Lag.kr(density);
+      density_jitter_sig = TRand.kr(trig: Impulse.kr(density),
+        lo: density_jitter.neg,
+        hi: density_jitter);
+      density = Lag.kr(density+density_jitter_sig);
       spread_pan = Lag.kr(spread_pan);
       // size = Lag.kr(min(size,maxgraindur));
       cutoff = Lag.kr(cutoff);
@@ -228,7 +235,6 @@ EGlut {
       sig_pos3=(sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,1);
       sig_pos4=(sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,1);
       SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, sig_pos1, sig_pos2, sig_pos3, sig_pos4]);
-
       sig = GrainBuf.ar(
             numChannels: 2, 
             trigger:grain_trig, 
@@ -431,14 +437,14 @@ EGlut {
 
       level = env;
       Out.ar(out, sig * level * gain);
-      Out.ar(effectBus, sig * level * send );
       Out.kr(phase_out, sig_pos);
-      // ignore gain for level out
+      // ignore gain for effect and level out
+      Out.ar(effectBus, sig * level * send );
       Out.kr(level_out, level);
     }).add;
 
     SynthDef(\effect, {
-      arg in, out, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1, echoVol=1.0;
+      arg in, out, echoVol=1.0, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1;
       var sig = In.ar(in, 2);
 
       // sig = CombL.ar(in: sig, maxechotime: 1, echotime: 0.01, decaytime: damp, mul: 1.0, add: 0.0);
@@ -481,6 +487,7 @@ EGlut {
 
     context.server.sync;
     "second eglut init sync".postln;
+    thisEngine.addCommand("echo_volume", "f", { arg msg; effect.set(\echoVol, msg[1]); });
     thisEngine.addCommand("echo_time", "f", { arg msg; effect.set(\echoTime, msg[1]); });
     thisEngine.addCommand("echo_damp", "f", { arg msg; effect.set(\damp, msg[1]); });
     thisEngine.addCommand("echo_size", "f", { arg msg; effect.set(\size, msg[1]); });
@@ -488,7 +495,6 @@ EGlut {
     thisEngine.addCommand("echo_fdbk", "f", { arg msg; effect.set(\feedback, msg[1]); });
     thisEngine.addCommand("echo_mod_depth", "f", { arg msg; effect.set(\modDepth, msg[1]); });
     thisEngine.addCommand("echo_mod_freq", "f", { arg msg; effect.set(\modFreq, msg[1]); });
-    thisEngine.addCommand("echo_volume", "f", { arg msg; effect.set(\echoVol, msg[1]); });
 
     thisEngine.addCommand("read", "is", { arg msg;
       this.readDisk(msg[1] - 1, msg[2]);
@@ -588,6 +594,11 @@ EGlut {
     thisEngine.addCommand("density", "if", { arg msg;
       var voice = msg[1] - 1;
       gvoices[voice].set(\density, msg[2]);
+    });
+
+    thisEngine.addCommand("density_jitter", "if", { arg msg;
+      var voice = msg[1] - 1;
+      gvoices[voice].set(\density_jitter, msg[2]);
     });
 
     thisEngine.addCommand("pan", "if", { arg msg;
@@ -715,11 +726,11 @@ EGlut {
         // recorders.at(\live_streamer).set(\pos,pos)
       },"/sc_eglut/grain_sig_pos");
     );
-    osc_funcs.put("live_audio_dry_wet",
-      OSCFunc.new({ |msg,time,addr,recvPort|
-        recorders.at(\live_streamer).set(\dry_wet,msg[1]);
-      },"/sc_eglut/live_audio_dry_wet");
-    );     
+    // osc_funcs.put("live_audio_dry_wet",
+    //   OSCFunc.new({ |msg,time,addr,recvPort|
+    //     recorders.at(\live_streamer).set(\dry_wet,msg[1]);
+    //   },"/sc_eglut/live_audio_dry_wet");
+    // );     
     osc_funcs.put("live_rec_level",
       OSCFunc.new({ |msg,time,addr,recvPort|
         recorders.at(\live_streamer).set(\rec_level,msg[1]);

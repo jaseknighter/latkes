@@ -2,7 +2,8 @@ local pages={}
 
 local reflector_button_letters={"R","L","P"}
 local reflector_button_labels={"rec","loop","play"}
-
+local alt_key = false
+local screen_recording = false
 -- function 
 function pages:init(args)
   local args=args==nil and {} or args
@@ -13,13 +14,21 @@ function pages:init(args)
   self.frame_height = self.composition_bottom-self.composition_top
   
   self.active_page=1
+  self.p1ui={}
+  self.p1ui.selected_ui_area_ix=2
+  self.p1ui.selected_voice=1
+  self.p1ui.selected_scene=1
+  self.p1ui.ui_areas = {"mode","voice","scene"}
+  self.p1ui.num_ui_areas=#self.p1ui.ui_areas
+  self.p1ui.selected_ui_area=self.p1ui.ui_areas[self.p1ui.selected_ui_area_ix]      
+
+
   self.p2ui={}
-  self.p2ui.selected_ui_area_ix=1
+  self.p2ui.selected_ui_area_ix=2
   self.p2ui.selected_voice=1
   self.p2ui.selected_scene=1
-  self.p2ui.selected_reflector=1  
-  
-  self.p2ui.ui_areas = {"voice","scene"}
+  self.p2ui.selected_reflector=nil  
+  self.p2ui.ui_areas = {"mode","voice","scene"}
   for i=1,self.max_reflectors_per_scene do
     table.insert(self.p2ui.ui_areas,"reflector"..i)
     for j=1,3 do
@@ -28,39 +37,170 @@ function pages:init(args)
       table.insert(self.p2ui.ui_areas,"reflectorbutton"..i.."-"..j)
     end
   end
-  
-  self.p2ui.num_ui_areas=2+(self.max_reflectors_per_scene*4)
+  self.p2ui.num_ui_areas=#self.p1ui.ui_areas+(self.max_reflectors_per_scene*4)
   self.p2ui.selected_ui_area=self.p2ui.ui_areas[self.p2ui.selected_ui_area_ix]      
 
 end
 
 function pages:display_frame()  
-  screen.level(1)
   screen.move(self.composition_left,self.composition_top)
   screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left,self.composition_bottom-self.composition_top)
+  screen.level(1)
   screen.fill()
+  screen.move(self.composition_left,self.composition_top)
+  screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left,self.composition_bottom-self.composition_top)
+  screen.level(5)
   screen.stroke()
 end
 
+function pages:get_selected_ui_elements()
+  if pages.active_page == 1 then
+    local voice = self.p1ui.selected_voice
+    local scene = self.p1ui.selected_scene
+    return voice, scene
+  elseif pages.active_page == 2 then
+    local voice = self.p2ui.selected_voice
+    local scene = self.p2ui.selected_scene
+    local reflector = self.p2ui.selected_reflector
+    return voice, scene, reflector
+  end
+end
 
+function pages:get_active_ui_area()
+  if pages.active_page == 1 then
+    return self.p1ui.selected_ui_area
+  elseif pages.active_page == 2 then
+    return self.p2ui.selected_ui_area
+  end
+end
+
+function pages:get_active_ui_area_type()
+  local active_ui_area_type
+  local ui_area = self:get_active_ui_area()
+  if ui_area == "mode" then
+    active_ui_area_type = "mode"
+  elseif ui_area == "voice" then
+    active_ui_area_type = "voice"
+  elseif ui_area == "scene" then
+    active_ui_area_type = "scene"
+  elseif string.sub(ui_area,1,15) == "reflectorbutton" then
+    active_ui_area_type = "reflectorbutton"
+  elseif string.sub(ui_area,1,9) == "reflector" then
+    active_ui_area_type = "reflector"
+  end
+  return active_ui_area_type
+end
+
+function pages:get_active_reflector()
+  local active_reflector
+  local ui_area = self:get_active_ui_area()
+  local active_ui_area = pages:get_active_ui_area_type()
+  if active_ui_area == "reflectorbutton" then
+    active_reflector=tonumber(string.sub(ui_area,-3,-3))
+  elseif active_ui_area == "reflector" then
+    active_reflector=tonumber(string.sub(ui_area,-1))
+  end
+  return active_reflector
+end
+
+function pages:get_active_reflector_button()
+  local active_reflector_button
+  local ui_area = self:get_active_ui_area()
+  local active_ui_area = pages:get_active_ui_area_type()
+  if active_ui_area == "reflectorbutton" then
+    active_reflector_button=tonumber(string.sub(ui_area,-1))
+  end
+  return active_reflector_button
+end
+
+function pages:key(k,z)
+  if k==1 then
+    if z==1 then
+      alt_key=true
+      print("true")
+    else
+      alt_key=false
+      if screen_recording == true then
+        screen_recording = false
+        local voice = self.p2ui.selected_voice
+        local scene = self.p2ui.selected_scene
+        local reflector = self.p2ui.selected_reflector
+        local reflector_record_id=voice.."-"..reflector.."record"..scene
+        params:set(reflector_record_id, 1)  
+
+      end
+    end
+  end
+end
+
+function pages:set_selected_ui_area(ix)
+  print("ix1",ix)
+  if pages.active_page==1 then
+    self.p1ui.selected_ui_area_ix=ix
+    self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
+    self.p2ui.selected_ui_area_ix=ix
+    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
+  elseif pages.active_page==2 then
+    -- if ix < 4 then
+    --   self.p1ui.selected_ui_area_ix=ix
+    --   self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
+    -- end
+    print("ix2",ix)
+    self.p2ui.selected_ui_area_ix=ix
+    print("self.p2ui.selected_ui_area_ix",self.p2ui.selected_ui_area_ix)
+    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
+    print("self.p2ui.selected_ui_area",self.p2ui.selected_ui_area)
+  end
+end
 function pages:enc(n,d)
-  if pages.active_page==2 then
+  if pages.active_page==1 then
     if n==2 then
-      self.p2ui.selected_ui_area_ix=util.clamp(self.p2ui.selected_ui_area_ix+d,1,self.p2ui.num_ui_areas)
-      self.p2ui.selected_ui_area=self.p2ui.ui_areas[self.p2ui.selected_ui_area_ix]
-      local ui_area = self.p2ui.selected_ui_area
-      if string.sub(ui_area,1,15) == "reflectorbutton" then
-        local reflector = tonumber(string.sub(ui_area,16,16))
-        self.p2ui.selected_reflector = reflector
-        local reflector_button = tonumber(string.sub(ui_area,-1))
+      local ix=util.clamp(self.p1ui.selected_ui_area_ix+d,1,self.p1ui.num_ui_areas)
+      self:set_selected_ui_area(ix)
+    elseif n==3 then
+      if self.p1ui.selected_ui_area=="mode" then
+        local voice = self.p1ui.selected_voice
+        local smode = params:get(voice .. "sample_mode") + d
+        params:set(voice .. "sample_mode", smode)
+      elseif self.p1ui.selected_ui_area=="voice" then
+        local selected_voice = util.clamp(self.p1ui.selected_voice+d,1,eglut.num_voices)
+        self.p1ui.selected_voice = selected_voice
+      elseif self.p1ui.selected_ui_area=="scene" then
+        local voice = self.p1ui.selected_voice
+        local selected_scene = util.clamp(params:get("rec_scene"..voice)+d,1,eglut.num_scenes)
+        params:set("rec_scene"..voice,selected_scene)
+        self.p1ui.selected_scene = selected_scene
+      end
+    end
+  elseif pages.active_page==2 then
+    if alt_key == true then
+      if n==3 then
+        local voice, scene, reflector = self:get_selected_ui_elements()
+
+        local reflector_active = string.find(self:get_active_ui_area_type(),"reflector")
+        if reflector_active then
+          if screen_recording == false then screen_recording = true end
+          local reflector_record_id=voice.."-"..reflector.."record"..scene
+          if params:get(reflector_record_id) == 1  then
+            params:set(reflector_record_id, 2)  
+          end
+          local reflector_id=reflectors_selected_params[voice][scene][reflector].id
+          params:delta(reflector_id,d)
+        end
+      end
+    elseif n==1 then
+
+    elseif n==2 then
+      local ix=util.clamp(self.p2ui.selected_ui_area_ix+d,1,self.p2ui.num_ui_areas)
+      self:set_selected_ui_area(ix)
+      local ui_area_type = self:get_active_ui_area_type()
+      if ui_area_type == "reflectorbutton" then
+        local reflector_button = self:get_active_reflector_button()
         self.p2ui.selected_reflector_button = reflector_button
         if self.p2ui.selected_reflector_button > 1 then
-          local voice = self.p2ui.selected_voice
-          local scene = self.p2ui.selected_scene
-          local reflector = self.p2ui.selected_reflector
-          local reflector_play_id=voice.."-"..reflector.."play"..scene
-          local play_visible = params:visible(reflector_play_id)
-          if play_visible == false then
+          local voice, scene, reflector = self:get_selected_ui_elements()
+          local play_visible = reflector and params:visible(voice.."-"..reflector.."play"..scene)
+          if play_visible ~= true then
             if self.p2ui.selected_reflector_button == 2 then
               d = d > 0 and 2 or -1
             else 
@@ -70,9 +210,12 @@ function pages:enc(n,d)
             self.p2ui.selected_ui_area=self.p2ui.ui_areas[self.p2ui.selected_ui_area_ix]
           end 
         end
-
-      elseif string.sub(ui_area,1,9) == "reflector" then
-        local reflector = tonumber(string.sub(ui_area,-1))
+        local reflector = tonumber(string.sub(self.p2ui.selected_ui_area,16,16))
+        self.p2ui.selected_reflector = reflector
+      elseif ui_area_type == "reflector" then
+        local reflector = self:get_active_reflector()
+        self.p2ui.selected_reflector = reflector
+        local reflector = self:get_active_reflector()
         self.p2ui.selected_reflector = reflector
         self.p2ui.selected_reflector_button = nil
       else
@@ -80,7 +223,11 @@ function pages:enc(n,d)
         self.p2ui.selected_reflector_button = nil
       end
     elseif n==3 then
-      if self.p2ui.selected_ui_area=="voice" then
+      if self.p2ui.selected_ui_area=="mode" then
+        local voice = self.p2ui.selected_voice
+        local smode = params:get(voice .. "sample_mode") + d
+        params:set(voice .. "sample_mode", smode)
+      elseif self.p2ui.selected_ui_area=="voice" then
         local selected_voice = util.clamp(self.p2ui.selected_voice+d,1,eglut.num_voices)
         self.p2ui.selected_voice = selected_voice
       elseif self.p2ui.selected_ui_area=="scene" then
@@ -89,9 +236,7 @@ function pages:enc(n,d)
         params:set("rec_scene"..voice,selected_scene)
         self.p2ui.selected_scene = selected_scene
       elseif self.p2ui.selected_reflector_button then
-        local voice = self.p2ui.selected_voice
-        local scene = self.p2ui.selected_scene
-        local reflector = self.p2ui.selected_reflector
+        local voice, scene, reflector = self:get_selected_ui_elements()
         local reflector_button = self.p2ui.selected_reflector_button
         if reflector_button == 1 then
           local reflector_record_id=voice.."-"..reflector.."record"..scene
@@ -109,19 +254,84 @@ function pages:enc(n,d)
           local reflector_play_id=voice.."-"..reflector.."play"..scene
           local state = params:get(reflector_play_id)
           if state + d > 0 and state + d < 3 then 
-            print(d, state,d+state)
-            -- print("button on/off",state+d == 1 and "off" or "on",reflector_play_id )
             params:set(reflector_play_id, state+d)  
           end
         end
+      else -- update param
+        local voice = self.p2ui.selected_voice
+        local scene = self.p2ui.selected_scene
+        local reflector = self.p2ui.selected_reflector
+        local reflector_record_id=voice.."-"..reflector.."record"..scene
+        if params:visible(reflector_record_id) == true then
+          local reflector_id=reflectors_selected_params[voice][scene][reflector].id
+          params:delta(reflector_id,d)
+        end
+
       end
     end
   end
 end
 
+function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
+  local button_letters={"m","v","sc"}
+  local button_size=((self.composition_bottom-self.composition_top)/3)
+  local button_left = self.composition_left - button_size - 1
+  screen.font_size(8)
+  for button=1,3 do
+
+    local button_top=self.composition_top+(button_size*(button-1))
+    screen.rect(button_left,button_top,button_size-1,button_size-1)
+    if button == 1 then
+      screen.level(ui_area=="mode" and 15 or 5)
+      screen.fill()
+      screen.stroke()
+      screen.move(button_left+5,button_top+8)
+      local mode_ix = params:get(voice.."sample_mode")
+      local p = params:lookup_param(voice.."sample_mode")
+      local mode = p.options[mode_ix]
+      local pval 
+      if mode == "off" then 
+        pval = "o"
+      elseif mode == "live stream" then 
+        pval = "lv" or "rc"
+      else
+        pval = "rc"
+      end
+      screen.level(0)
+      screen.text_center(pval)    
+    elseif button == 2 then
+      screen.level(ui_area=="voice" and 15 or 5)
+      screen.fill()
+      screen.stroke()
+      screen.move(button_left+5,button_top+8)
+      screen.level(0)
+      screen.text_center(voice)    
+    elseif button == 3 then
+      screen.level(ui_area=="scene" and 15 or 5)
+      screen.fill()
+      screen.stroke()
+      screen.move(button_left+5,button_top+8)
+      screen.level(0)
+      screen.text_center(scene)    
+    end
+    -- screen.move(self.composition_right+button_size+4,button_top+6)
+    -- screen.level(0)
+    screen.stroke()
+    screen.move(button_left-11,button_top+8)
+    screen.text(button_letters[button])
+    screen.stroke()
+  end
+end
+
 function pages:redraw(page_num)
   self:display_frame()
+  local ui_area = self:get_active_ui_area()
+  local voice, scene = self:get_selected_ui_elements()
+
+  -- draw sample mode, voice, and scene ui boxes
+  self:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   if page_num == 1 then
+
     -- draw waveforms
     local show_waveform_name
     local show_waveform_ix = params:get("show_waveform")
@@ -129,184 +339,54 @@ function pages:redraw(page_num)
     local show_waveform = waveforms[show_waveform_name]:get_samples()~=nil
     if show_waveform then
       local sig_positions = nil
-      if show_waveform_ix-2>0 then
-        local voice=math.ceil((show_waveform_ix-2)/eglut.num_voices)
-        sig_positions=waveform_sig_positions[voice.."granulated"]
-      elseif waveform_names[show_waveform_ix]=="transported" then
-        sig_positions=waveform_sig_positions["transported"]
-      end
-      local slice_pos = show_waveform_name=="composed" and composition_slice_positions or nil
+      local voice=math.ceil((show_waveform_ix)/eglut.num_voices)
+      sig_positions=waveform_sig_positions[voice.."granulated"]
       waveforms[show_waveform_name]:redraw(sig_positions,slice_pos)
     end
     screen.level(15)  
 
 
-    -- set data points
-    if mode == "points generated" then
-      if points_data then
-        if slices_analyzed then
-          slices_analyzed = nil
-          total_slices = nil
-        end
-        local show_all_slice_ids = params:get("show_all_slice_ids")
-        for k,point in pairs(points_data) do 
-          -- tab.print(k,v) 
-          local x = composition_left + math.ceil(point[1]*(127-composition_left-5))
-          local y = composition_top + math.ceil(point[2]*(64-composition_top-5))
-          screen.level(15)
-          screen.move(x,y-1)
-          screen.line_rel(0,3)
-          if show_all_slice_ids==2 then
-            screen.level(5)
-            screen.move(x,y-2)
-            screen.text_center(tonumber(k) + 1)
-            screen.level(15)
-          end
-        end
-        screen.stroke()
-          
-      else 
-        print("no points data")
-      end
-
-      --show slice played
-      if (slice_played_ix) then
-        -- screen.rect(slice_played_x-1,slice_played_y,2,2)
-        -- screen.stroke()
-        screen.level(5)
-        screen.move(slice_played_x-5,slice_played_y-9)
-        screen.rect(slice_played_x-5,slice_played_y-9,11,7)
-        screen.fill()
-        screen.level(15)
-        screen.move(slice_played_x,slice_played_y-2)
-        screen.text_center(tonumber(slice_played_ix) + 1)
-
-        -- screen.stroke()
-      end
-
-      --show left transport slice
-      if (transport_src_left_x) then
-        screen.move(transport_src_left_x-3,transport_src_left_y)
-        screen.line_rel(2,0)
-        screen.move(transport_src_left_x,transport_src_left_y-2)
-        screen.text_center(tonumber(transport_src_left_ix)+1)
-        -- screen.stroke()
-      end
-      --show right transport slice
-      if (transport_src_right_x) then
-        screen.move(transport_src_right_x,transport_src_right_y)
-        screen.line_rel(2,0)
-        screen.move(transport_src_right_x,transport_src_right_y-2)
-        screen.text_center(tonumber(transport_src_right_ix)+1)
-
-        -- screen.stroke()
-      end
-      -- screen.move(cursor_x-4,cursor_y-1)
-      screen.rect(cursor_x-2,cursor_y-2,4,4)
-      -- screen.circle(cursor_x,cursor_y,5)
-      -- screen.line(transport_src_right_x,transport_src_right_y,2)
-      -- screen.stroke()
-    elseif mode == "start" then
-      screen.move(composition_left,8)
-      -- screen.text("k2 to select folder/file...")
-      -- screen.move(composition_left,16)
-      -- screen.text("k1+k3 to record live...")
-    elseif mode == "loading audio" then
-      -- print("loading audio...")
-      screen.move(composition_left,composition_top-6)
-      screen.text("loading audio...")
-    elseif mode == "audio composed" then
-      print("show comp")
-      if waveforms["composed"].waveform_samples then
-        screen.move(composition_left,composition_top-6)
-        -- screen.text("k1+k2 to transport audio...")
-        screen.text("k3 to analyze audio...")
-        waveforms["composed"]:redraw(composed_sig_pos)
-      end
-    elseif mode == "recording" then
+    if mode == "recording" then
       print("recording in progress...")
       screen.move(composition_left,composition_top-6)
       screen.text("recording in progress...")
       if waveforms["composed"].waveform_samples then
         waveforms["composed"]:redraw(composed_sig_pos)
       end
-    elseif mode == "analysing" then
-      screen.move(composition_left,composition_top-6)
-      if slices_analyzed then
-        screen.text("progress: "..slices_analyzed.."/"..total_slices)
-      else
-        screen.text("analysis in progress...")
-      end
     end
   elseif page_num == 2 then
-    local ui_area = self.p2ui.selected_ui_area
-    local voice = self.p2ui.selected_voice
-    local scene = params:get("rec_scene"..voice)
-
-    -- draw voice and scene ui boxes
-    screen.level(ui_area=="voice" and 7 or 3)
-    local voicebox_left = 10
-    local voicebox_width = self.composition_left-voicebox_left-3
-    local voicebox_top = self.composition_top
-    local voicebox_height = ((self.composition_bottom-self.composition_top)/2)-1
-    local scenebox_left = 10
-    local scenebox_width = self.composition_left-scenebox_left-3
-    local scenebox_top = voicebox_top+voicebox_height+2
-    local scenebox_height = voicebox_height
-
-    screen.move(voicebox_left,voicebox_top)
-    screen.rect(voicebox_left,voicebox_top,voicebox_width,voicebox_height)
-    screen.fill()
-    screen.stroke()
-    
-    screen.level(12)
-    screen.move(scenebox_left-2,scenebox_top-4)
-    screen.text_right("v")
-    screen.move(scenebox_left+(scenebox_width/2),scenebox_top-4)
-    screen.font_size(16)
-    screen.text_center(voice)
-    screen.stroke()
-    
-    screen.level(ui_area=="scene" and 7 or 3)
-    screen.move(scenebox_left,scenebox_top)
-    screen.rect(scenebox_left,scenebox_top,scenebox_width,scenebox_height)
-    screen.fill()
-    screen.stroke()
-            
-    screen.level(12)
-    screen.font_size(8)
-    -- screen.level(7)
-    screen.move(scenebox_left-2,scenebox_top+scenebox_height-2)
-    screen.text_right("sc")
-    screen.move(scenebox_left+(scenebox_width/2),scenebox_top+scenebox_height-2)
-    screen.font_size(16)
-    screen.text_center(scene)
-    screen.stroke()
-    screen.stroke()
         
     -- draw reflector separators, labels, and animated bars
     local bar_width = math.floor(self.frame_width/self.max_reflectors_per_scene)
-    screen.level(7)
+    screen.level(15)
     screen.move(self.composition_left,self.composition_top)
     screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left,self.composition_bottom-self.composition_top)
     screen.font_size(8)
     for reflector=1,self.max_reflectors_per_scene do
       local bar_x = math.floor(self.composition_left+((reflector-1)*bar_width))
       local bar_y = self.composition_top
-      screen.level(2)
+      screen.level(5)
       screen.move(bar_x,bar_y)
       screen.line_rel(0,self.frame_height-1)
       screen.stroke()
       local text_x = math.floor(self.composition_left+((reflector-1)*bar_width)+(bar_width/2))
-      local text_y = self.composition_bottom + 10
+      local text_y = self.composition_bottom + 9
       
       -- draw reflector numbers 
-      screen.level((ui_area=="reflector"..reflector or string.sub(ui_area,1,16) == "reflectorbutton" .. reflector) and 10 or 3)
+      local reflector_highlighted = ui_area=="reflector"..reflector
+      local buttons_highlighted = string.sub(ui_area,1,16) == "reflectorbutton" .. reflector
+
+      if reflector_highlighted or buttons_highlighted then
+        screen.level(5)
+        screen.move(text_x-4,text_y-7)
+        screen.rect(text_x-4,text_y-7,8,8)
+        screen.fill()
+      end
+      screen.level((reflector_highlighted or buttons_highlighted) and 15 or 5)
       screen.move(text_x,text_y)
       screen.text_center(reflector)
-      
+
       -- set reflector name
-      -- if ui_area~="voice" and ui_area~="scene" then
       local reflector_name, label
       if ui_area=="reflector"..reflector or string.sub(ui_area,1,16) == "reflectorbutton" .. reflector then
         local reflector_param=reflectors_selected_params[voice][scene][reflector]
@@ -317,11 +397,19 @@ function pages:redraw(page_num)
             local button_ix = tonumber(string.sub(ui_area,-1))
             local button = reflector_button_labels[button_ix]
             label = label .. "-" .. button
+          else 
+            reflector_id=reflector_param.id
+            local param_value = params:get(reflector_id)
+            local param_max = params:get_range(reflector_id)[2]
+            param_value = util.round(param_value,0.01)
+            -- if param_max > 10 then
+            -- end
+            label = label .. ": " .. param_value
           end
         else
           label="--"
         end 
-        screen.level(10)
+        screen.level(5)
         screen.move(self.composition_left,self.composition_top-4)
         screen.text(label)
       
@@ -346,22 +434,22 @@ function pages:redraw(page_num)
             local button_top=self.composition_top+(button_size*(reflector_button-1))
             screen.rect(self.composition_right+2,button_top,button_size-1,button_size-1)
             if reflector_button == tonumber(string.sub(ui_area,-1)) and string.sub(ui_area,1,16) == "reflectorbutton" .. reflector then
-              screen.level(7)
+              screen.level(15)
               screen.fill()
               screen.stroke()            
             else              
-              screen.level(3)
+              screen.level(5)
               screen.fill()
               screen.stroke()
             end
 
             if reflector_button == 1 then
               -- screen.circle(self.composition_right+button_size+3,button_top+4,2)
-              screen.level(recording==2 and 12 or 3)
+              screen.level(recording==2 and 15 or 5)
             elseif reflector_button == 2 then
-              screen.level(looping==2 and 12 or 3)
+              screen.level(looping==2 and 15 or 5)
             elseif reflector_button == 3 then
-              screen.level(playing==2 and 12 or 3)
+              screen.level(playing==2 and 15 or 5)
             end
             -- screen.move(self.composition_right+button_size+4,button_top+6)
             screen.circle(self.composition_right+button_size+4,button_top+6,1)
@@ -380,7 +468,7 @@ function pages:redraw(page_num)
       local sel_param_id=sel_param and sel_param.id
       -- print(sel_param,sel_param_id,voice,scene,reflector) 
       if sel_param and sel_param_id then
-        screen.level(pages.p2ui.selected_reflector == reflector and 10 or 3)
+        screen.level(self.p2ui.selected_reflector == reflector and 15 or 5)
         local reflector_id=reflectors_selected_params[voice][scene][reflector].id
         -- local reflector=reflectors[voice][scene][reflector_id]
         local param_bar_x = math.floor(self.composition_left+((reflector-1)*bar_width)-2)+3
