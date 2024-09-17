@@ -47,9 +47,13 @@ function Waveform:display_sigs_pos(sigs_pos)
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
     for i=1,#sigs_pos do
       local sig_pos = sigs_pos[i]
+      -- print(sig_pos)
       screen.blend_mode(blend_mode or 4)   
       local height = util.round(self.composition_top-self.composition_bottom+6)
-      screen.move(util.linlin(0,127,self.composition_left,self.composition_right,math.floor(sig_pos*127)), center - (height/2))
+      local xloc = util.linlin(1,127,self.composition_left,self.composition_right,sig_pos*127)
+      -- local xloc = util.linlin(1,127,self.composition_left,self.composition_right,math.floor(sig_pos*127))
+      local yloc = center - (height/2)
+      screen.move(xloc, yloc)
       screen.line_rel(0, height)
       -- screen.stroke()
     end

@@ -19,12 +19,12 @@ EGlut {
   var updating_gr_envbufs = false;
   var prev_sig_pos1=0, prev_sig_pos2=0, prev_sig_pos3=0, prev_sig_pos4=0;
 
-	var <seek_tasks;
+	// var <seek_tasks;
   var osc_funcs;
   var recorders;
   var live_streamer;
   var live_buffer;
-  var live_buffer_length=3;
+  var live_buffer_length = 120;
     
 
 	*new {
@@ -38,20 +38,26 @@ EGlut {
   }
 
 	// read from an existing buffer into the granulation buffsers
-	readBuf { arg i, buf, mode;
-		// if(buffers[i].sampleRate!=nil, {
-      // buffers[i].zero;
-      // buffers[i+ngvoices].zero;
+	readBuf { arg i, buf, mode,sample_duration;
+    ["readBuf set voices and buffers",i,buf,buffers, mode].postln;
+    // if(buffers[i].sampleRate!=nil, {
+    //   buffers[i].zero;
+    //   buffers[i+ngvoices].zero;
     // });
+
     if (mode.notNil,{
       this.setGrainMode(mode);
     });
-    ["readBuf i,buf",i,buf,mode].postln;
     // duplicate GrainBuf for stereo granulation
     gvoices[i].set(\buf, buf);
-    buffers[i] = buf;
+    gvoices[i].set(\buf_pos_end, sample_duration/live_buffer_length);
+    // buffers[i] = buf;
     gvoices[i].set(\buf2, buf);
-    buffers[i+ngvoices] = buf;
+    gvoices[i].set(\buf_pos_end, sample_duration/live_buffer_length);
+    // buffers[i+ngvoices] = buf;
+
+    
+    ["readBuf done i,modem,sample_duration,live_buffer_length",i,mode,sample_duration,live_buffer_length].postln;
 	}
 
   // disk read
@@ -104,7 +110,6 @@ EGlut {
     context = engContext;
     thisEngine = eng;
     
-    live_buffer = Buffer.alloc(s, s.sampleRate * live_buffer_length);
     grain_modes = Array.fill(ngvoices, { arg i;
       1;
     });
@@ -112,7 +117,7 @@ EGlut {
     buffers = Array.fill(ngvoices*2, { arg i;
       Buffer.alloc(
         s,
-        s.sampleRate * 1,
+        s.sampleRate * live_buffer_length,
       );
     });
 
@@ -124,6 +129,8 @@ EGlut {
       arg in=0,out=0,phase,
           buf=0, rate=1,
           pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=1,
+          // pos=0,buf_pos_start=0,sample_duration=10,t_reset_pos=1,
+          // pos=0,buf_pos_start=0,buf_pos_end=1,sample_duration=10,t_reset_pos=1,
           // dry_wet=1,
           write_live_stream_enabled=1,
           rec_level=1,pre_level=0;
@@ -132,17 +139,21 @@ EGlut {
 	    // var dry_sig=LinLin.kr(dry_wet,1,0,0,1);
       // var wet_sig=LinLin.kr(dry_wet,0,1,0,1);
       var rec_pos;
+      // var rec_buf_reset = Impulse.kr(1);
+      var rec_buf_reset = Impulse.kr((buf_pos_end*live_buffer_length).reciprocal);
 
       buf_dur = BufDur.kr(buf);
       buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
         start:buf_pos_start, end:buf_pos_end, resetPos: pos);
-
+      
       // dry_sig=min(1,dry_sig);
       // wet_sig=max(0,wet_sig);
       // RecordBuf.ar(sig*wet_sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
+      // [rec_buf_reset,buf_pos].poll;
       
-      RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
+      RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: rec_buf_reset * write_live_stream_enabled, doneAction: 0);
+      // RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
       
       Out.kr(rec_phase.index, buf_pos);
       // Out.ar(out,sig*dry_sig);
@@ -150,24 +161,28 @@ EGlut {
 
     SynthDef(\synth, {
       arg voice, out, effectBus, phase_out, level_out, buf, buf2,
-      gate=0, pos=0, buf_pos_start=0, buf_pos_end=1, speed=1, jitter=0, spread_sig=0, voice_pan=0,	
+      gate=0, pos=0, 
+      buf_pos_start=0, 
+      buf_pos_end=1, 
+      sample_duration=10/120,
+      speed=1, jitter=0, spread_sig=0, voice_pan=0,	
       size=0.1, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
-      freeze=0, t_reset_pos=0, cutoff=20000, q, send=0, 
+      t_reset_pos=0, cutoff=20000, q, send=0, 
       ptr_delay=0.2,sync_to_rec_head=1,
       // mode=0, 
       subharmonics=0,overtones=0, gr_envbuf = -1,
       spread_sig_offset1=0, spread_sig_offset2=0, spread_sig_offset3=0;
 
       var grain_trig=1;
+      var grain_jitter_trig=1;
       var trig_rnd;
       var density_jitter_sig;
       var jitter_sig, jitter_sig2, jitter_sig3, jitter_sig4;
-      var sig_pos1, sig_pos2, sig_pos3, sig_pos4;
+      var sig_pos, sig_pos1, sig_pos2, sig_pos3, sig_pos4;
       var buf_dur;
       var pan_sig;
       var pan_sig2;
       var buf_pos;
-      var sig_pos;
       var sig;
 
       var env;
@@ -178,6 +193,10 @@ EGlut {
       var overtone_vol=overtones/(1.0+subharmonics+overtones);
       var maxgraindur=ptr_delay/speed.abs;
       var ptr;
+      var reset_pos=1;
+
+
+      pos = pos * buf_pos_end;
 
       density_jitter_sig = TRand.kr(trig: Impulse.kr(density),
         lo: density_jitter.neg,
@@ -216,25 +235,29 @@ EGlut {
 
 
 
-
-
+      reset_pos = pos;
       buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * speed,
-        start:buf_pos_start, end:buf_pos_end, resetPos: pos);
-      
-      sig_pos = Wrap.kr(Select.kr(freeze, [buf_pos, pos]));
+        start:buf_pos_start, end:buf_pos_end, resetPos: reset_pos);
 
+      sig_pos = buf_pos;
       sig_pos = (sig_pos*(1-sync_to_rec_head)) + (rec_phase.kr.asInteger*sync_to_rec_head);
-      // sync_to_rec_head.poll;
-      
-      sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))) ;
-      
-      
-      sig_pos1=(sig_pos+jitter_sig).wrap(0,1);
-      sig_pos2=(sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(0,1);
-      sig_pos3=(sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,1);
-      sig_pos4=(sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,1);
-      SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, sig_pos1, sig_pos2, sig_pos3, sig_pos4]);
+      sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))).wrap(0,buf_pos_end);
+      // sig_pos = max(sig_pos,0);
+      // sig_pos = min(sig_pos,1);
+      // sig_pos = (sig_pos * ((pos/buf_pos_end) < 1)) + (not((pos/buf_pos_end)<1));
+      spread_sig = (spread_sig*buf_pos_end)/4;
+      sig_pos1=(sig_pos+jitter_sig).wrap(0,buf_pos_end);
+      sig_pos2=(sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(0,buf_pos_end);
+      sig_pos3=(sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,buf_pos_end);
+      sig_pos4=(sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,buf_pos_end);
+
+      ([sig_pos <= buf_pos_start, sig_pos >= buf_pos_end]).poll;
+
+      // scale sig_pos sent to lua to be proportional to the variable sample duration value,
+      // not the entire buffer value
+      SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, sig_pos1/buf_pos_end, sig_pos2/buf_pos_end, sig_pos3/buf_pos_end, sig_pos4/buf_pos_end]);
+
       sig = GrainBuf.ar(
             numChannels: 2, 
             trigger:grain_trig, 
@@ -245,7 +268,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:96/2,//96,
+            maxGrains:96,//96/2,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -258,7 +281,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:96/2,//96,
+            maxGrains:96,//96/2,//96,
             mul:main_vol*0.5,
           )+
 
@@ -273,7 +296,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//72,
+            maxGrains:72,//24,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -286,7 +309,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//72,
+            maxGrains:72,//24,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -299,7 +322,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//32,
+            maxGrains:32,//24,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -312,7 +335,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//32,
+            maxGrains:32,//24,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -430,16 +453,18 @@ EGlut {
 
       
       sig = BLowPass4.ar(sig, cutoff, q);
+      // sig = BPF.ar(sig, cutoff, q);
+
       sig = Compander.ar(sig,sig,0.25)/envscale;
       // sig = Compander.ar(sig,sig,0.25)/8;
       sig = Balance2.ar(sig[0],sig[1],voice_pan);
-      env = EnvGen.kr(Env.asr(0, 1, 0), gate: gate, timeScale: envscale);
+      env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
 
       level = env;
       Out.ar(out, sig * level * gain);
       Out.kr(phase_out, sig_pos);
-      // ignore gain for effect and level out
       Out.ar(effectBus, sig * level * send );
+      // ignore gain for effect and level out
       Out.kr(level_out, level);
     }).add;
 
@@ -452,11 +477,10 @@ EGlut {
 
       sig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
       Out.ar(out, sig * 4 * echoVol);
+      
     }).add;
     
-    ["before first eglut init sync",argServer, engContext, eng,context.server].postln;
     s.sync;
-    "after first eglut init sync".postln;
 
     // echo bus
     effectBus = Bus.audio(context.server, 2);
@@ -503,44 +527,16 @@ EGlut {
     thisEngine.addCommand("seek", "if", { arg msg;
       var voice = msg[1] - 1;
       var lvl, pos;
-      var seek_rate = 1 / 750;
-
-      seek_tasks[voice].stop;
+      
+      // seek_tasks[voice].stop;
 
       // TODO: async get
       lvl = levels[voice].getSynchronous();
 
-      if (false, { // disable seeking until fully implemented
-        var step;
-        var target_pos;
-
-        // TODO: async get
-        pos = phases[voice].getSynchronous();
-        gvoices[voice].set(\freeze, 1);
-
-        target_pos = msg[2];
-        step = (target_pos - pos) * seek_rate;
-
-        seek_tasks[voice] = Routine {
-          while({ abs(target_pos - pos) > abs(step) }, {
-            pos = pos + step;
-            gvoices[voice].set(\pos, pos);
-            seek_rate.wait;
-          });
-
-          gvoices[voice].set(\pos, target_pos);
-          gvoices[voice].set(\freeze, 0);
-          gvoices[voice].set(\t_reset_pos, 1);
-        };
-
-        seek_tasks[voice].play();
-      }, {
-        pos = msg[2];
-
-        gvoices[voice].set(\pos, pos);
-        gvoices[voice].set(\t_reset_pos, 1);
-        gvoices[voice].set(\freeze, 0);
-      });
+      pos = msg[2];
+      gvoices[voice].set(\pos, pos);
+      // gvoices[voice].set(\t_reset_pos, 1 + 110/120);
+      gvoices[voice].set(\t_reset_pos, 1);
       gvoices[voice].set(\sync_to_rec_head, 0);
     });
 
@@ -715,17 +711,17 @@ EGlut {
     // 	});
     });
 
-    seek_tasks = Array.fill(ngvoices, { arg i;
-      Routine {}
-    });
+    // seek_tasks = Array.fill(ngvoices, { arg i;
+    //   Routine {}
+    // });
 
-    osc_funcs.put("eglut_sig_pos",
-      OSCFunc.new({ |msg,time,addr,recvPort|
+    // osc_funcs.put("eglut_sig_pos",
+      // OSCFunc.new({ |msg,time,addr,recvPort|
         // var pos=msg[3];
         // msg[3].postln;
         // recorders.at(\live_streamer).set(\pos,pos)
-      },"/sc_eglut/grain_sig_pos");
-    );
+      // },"/sc_eglut/grain_sig_pos");
+    // );
     // osc_funcs.put("live_audio_dry_wet",
     //   OSCFunc.new({ |msg,time,addr,recvPort|
     //     recorders.at(\live_streamer).set(\dry_wet,msg[1]);
@@ -735,7 +731,7 @@ EGlut {
       OSCFunc.new({ |msg,time,addr,recvPort|
         recorders.at(\live_streamer).set(\rec_level,msg[1]);
       },"/sc_eglut/live_rec_level");
-    );     
+    );
     osc_funcs.put("live_pre_level",
       OSCFunc.new({ |msg,time,addr,recvPort|
         recorders.at(\live_streamer).set(\pre_level,msg[1]);
@@ -744,17 +740,25 @@ EGlut {
     osc_funcs.put("granulate_live",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        live_buffer.zero;
+        // var live_buffer;
+        var sample_duration=msg[2];
+        ["live_buffer_length,voice",sample_duration,live_buffer == nil, live_buffer_length,voice].postln;
+        // live_buffer.zero;
         live_streamer.free;
-        live_buffer = Buffer.alloc(s, s.sampleRate * live_buffer_length,completionMessage:{      
-          ["live streamer add at/phase",live_buffer,rec_phase.index].postln;
-          recorders.add(\live_streamer ->
-            live_streamer=Synth(\live_streamer, [\buf,live_buffer,\phase,rec_phase]);
-          );
-          lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
-          this.readBuf(voice,live_buffer,voice);
-          // ["gran_live",voice,live_buffer].postln;
-        });
+        recorders.add(\live_streamer ->
+          live_streamer=Synth(\live_streamer, [\buf,live_buffer,\sample_duration, sample_duration, \buf_pos_end, sample_duration/live_buffer_length,  \phase,rec_phase]);
+        );
+        lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
+        this.readBuf(voice,live_buffer,2,sample_duration);
+        // live_buffer = Buffer.alloc(s, s.sampleRate * live_buffer_length,completionMessage:{      
+        //   ["live streamer add at/phase",live_buffer,rec_phase.index,s.sampleRate].postln;
+        //   recorders.add(\live_streamer ->
+        //     live_streamer=Synth(\live_streamer, [\buf,live_buffer,\sample_duration, sample_duration, \phase,rec_phase]);
+        //   );
+        //   lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
+        //   this.readBuf(voice,live_buffer,2);
+        //   // ["gran_live",voice,live_buffer].postln;
+        // });
       },"/sc_osc/granulate_live");
     );   
 
@@ -772,7 +776,6 @@ EGlut {
         sig_pos3 != prev_sig_pos3 || 
         sig_pos4 != prev_sig_pos4, {
         lua_sender.sendMsg("/lua_eglut/grain_sig_pos",voice,sig_pos1, sig_pos2, sig_pos3, sig_pos4);
-        sc_sender.sendMsg("/sc_eglut/grain_sig_pos",voice,sig_pos1, sig_pos2, sig_pos3, sig_pos4);
         // ["eglut_sigs_pos",voice,sig_pos1, sig_pos2, sig_pos3, sig_pos4].postln;
       });
       prev_sig_pos1 = sig_pos1;

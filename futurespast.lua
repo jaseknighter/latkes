@@ -9,14 +9,16 @@
 -- instructions
 
 ----------------------------
--- todo:
+-- bugs/improvement ideas:
 -- why doesn't changing attack level make changes immediately, but requires a pause and addition value change to take effect?
--- fix echo volument (requires value change to work after starting the script)
 -- changing scene in a voice affects all voices
 -- fix panning for effects (greyhole)
--- fix recording length (see max_analysis_length) 
--- address 3 sec limitation on live waveform display
-
+-- fix recording length (see max_analysis_length. why is it 60 and not 120) 
+-- buffer updates
+--    make one live buffer per voice
+--    allow rec/pre levels to be set per scene
+-- add a filterbank
+-- what is max_analysis_length for?
 -- page 2
 --   add labels for sample mode, voice, scene
 --   add pause play for all recorders at the voice/scene level
@@ -55,7 +57,7 @@ local enc_debouncing=false
 local record_live_duration = 10
 
 local softcut_loop_start = 1
-local softcut_loop_end = 4
+local softcut_loop_end = 11--4
 
 waveforms = {}
 waveform_names = {}
@@ -68,6 +70,8 @@ max_analysis_length = 60
 local audio_path = _path.audio..norns.state.name.."/"
 local data_path=_path.data..norns.state.name.."/"
 local reflection_data_path=data_path.."reflectors/"
+
+live_buffer_length = 120
 
 --------------------------
 -- waveform rendering
@@ -88,7 +92,6 @@ function waveform_render_queue_add(waveform_name, waveform_path)
   end
 end
 
--- render_softcut_buffer(1,1,2,128)
 function render_softcut_buffer(buffer,winstart,winend,samples)
   softcut.render_buffer(buffer, winstart, winend - winstart, 128)
 end
@@ -151,12 +154,11 @@ function osc.event(path,args,from)
   if path == "/lua_eglut/grain_sig_pos" then
     local voice=math.floor(args[1]+1)
     table.remove(args,1)
+    -- tab.print(args)
     waveform_sig_positions[voice.."granulated"]=args
     screen_dirty = true
   elseif path == "/lua_osc/sc_inited" then
     print("fcm 2d corpus sc inited message received")
-  elseif path == "/lua_osc/on_granulate_live" then
-    -- softcut.rec_offset(1,0);
   end
 end
 
@@ -496,22 +498,11 @@ function init_reflectors()
 
   end
 
-  -- reflectors_param_list={
-  --   "play","volume","volumelfo","ptr_delay","speed","speedlfo","seek","seeklfo",
-  --   -- "pos",
-  --   "size","sizelfo","density","density_beat_divisor","density_sync_external","densitylfo",
-  --   "pitch","pitch_sync_external","spread_sig","spread_siglfo",
-  --   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
-  --   "jitter","jitterlfo",
-  --   "fade","attack_level","attack_time","decay_time","env_shape",
-  --   "cutoff","cutofflfo","q","send","pan","spread_pan","spread_panlfo",
-  --   "subharmonics","subharmonicslfo","overtones","overtoneslfo",
-  -- }
   reflectors_param_list={
     "play","volume","ptr_delay","speed","seek",
     -- "pos",
-    "size","density","density_beat_divisor","density_jitter","density_jitter_mult","density_sync_external",
-    "pitch","pitch_sync_external","spread_sig",
+    "size","density","density_beat_divisor","density_jitter","density_jitter_mult",
+    "pitch","spread_sig",
     "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
     "jitter",
     "fade","attack_level","attack_time","decay_time","env_shape",
@@ -564,7 +555,8 @@ function init_reflectors()
         params:add_option(rec_id,"record",{"off","on"})
         params:set_action(rec_id,function(value) 
           local reflector_tab = get_reflector_table(voice,scene,reflector)
-          if value==2 then
+          if reflector_tab == nil then return
+          elseif value==2 then
             print("start reflector",rec_id)
             reflector_tab:clear()
             reflector_tab:set_rec(1)
@@ -673,6 +665,10 @@ function softcut_reset_pos()
   softcut.position(1,softcut_loop_start)
 end
 
+function get_selected_voice()
+    return pages.p1ui.selected_voice
+end
+
 function softcut_init()
   -- rate = 1.0
   local rec = 1.0
@@ -689,7 +685,9 @@ function softcut_init()
   softcut.rate(1,1.0)
   softcut.loop(1,1)
   softcut.loop_start(1,softcut_loop_start)
-  softcut.loop_end(1,softcut_loop_end) --voice,duration
+  local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
+  current_loop_end = loop_end
+  softcut.loop_end(1,loop_end) --voice,duration
   softcut.position(1,1)
   softcut.play(1,1)
 
@@ -732,7 +730,7 @@ function init()
   end
   setup_waveforms()
   setup_params()
-  eglut:init(on_eglut_file_loaded)
+  eglut:init(live_buffer_length,on_eglut_file_loaded)
   eglut:setup_params()
   -- eglut:init_lattice()
   setup_params_post_eglut()
@@ -748,7 +746,12 @@ function init()
   redrawtimer = metro.init(function() 
     if (norns.menu.status() == false and fileselect.done~=false) then
       if screen_dirty == true then redraw() end
-      render_softcut_buffer(1,1,softcut_loop_end,128)
+      local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
+      -- softcut.loop_end(1,loop_end) --voice,duration
+      if current_loop_end ~= loop_end then 
+        softcut_init()
+      end
+      render_softcut_buffer(1,1,loop_end,128)
     end
   end, 1/15, -1)
   redrawtimer:start()

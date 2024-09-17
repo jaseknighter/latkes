@@ -11,8 +11,8 @@ e.param_list={
   -- "pos",
   "grain_params",
   "play","volume","send","ptr_delay","speed","seek",
-  "size","density","density_beat_divisor","density_jitter","density_jitter_mult","density_sync_external",
-  "pitch","pitch_sync_external","spread_sig",
+  "size","density","density_beat_divisor","density_jitter","density_jitter_mult",
+  "pitch","spread_sig",
   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
   "jitter",
   "fade","attack_level","attack_time","decay_time","env_shape",
@@ -182,7 +182,10 @@ function e:bang(scene, bangscope)
   if bangscope ~= 2 then
     for _,param_name in ipairs(e.param_list_echo) do
       local p=params:lookup_param(param_name..scene)
-      if p.t~=6 then p:bang() end
+      if p.t~=6 then 
+        p:bang() 
+        print(p.name,"bang")  
+      end
     end
   end
 end
@@ -211,7 +214,9 @@ function e:load_file(voice,scene,file)
 end
 
 function e:granulate_live(voice)
-  osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1})
+  local sample_length = params:get(voice.."sample_length")
+  print("granulate_live",voice,sample_length)
+  osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_length})
 end
 
 function e:update_scene(voice,scene)
@@ -262,6 +267,11 @@ function e:setup_params()
       scene=scene and scene or 1
       e:update_scene(i,scene)
     end)
+    params:add_control(i.."sample_length","sample length",controlspec.new(1,120.0,"exp",0.1,10,"s",0.1/120))
+    params:set_action(i.."sample_length",function()
+      self:granulate_live(i)
+    end)
+
     local sample_modes={"off","live stream","recorded"}
     params:add_option(i.."sample_mode","sample mode",sample_modes,1)
     params:set_action(i.."sample_mode",function(mode)
@@ -325,7 +335,7 @@ function e:setup_params()
       params:add_control(i.."send"..scene,"echo send",controlspec.new(0.0,1.0,"lin",0.01,1))
       params:set_action(i.."send"..scene,function(value) engine.send(i,value) end)
 
-      params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.01,2,"lin",0.001,0.2,"",0.01/2))
+      params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.005,2,"lin",0.001,0.2,"",0.01/2))
       -- params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.05,2,"lin",0.001,0.2,"",0.05/2))
       params:set_action(i.."ptr_delay"..scene,function(value) engine.ptr_delay(i,value) end)
       
@@ -347,10 +357,12 @@ function e:setup_params()
         engine.speed(i,value) 
         clock.run(speed_check,value,i,scene)
       end)
+
       params:add_control(i.."seek"..scene,"seek",controlspec.new(0,1,"lin",0.001,0,"",0.001/1,true))
       params:set_action(i.."seek"..scene,function(value) engine.seek(i,util.clamp(value,0,1)) end)
 
-      params:add_control(i.."size"..scene,"size",controlspec.new(0.1,15,"exp",0.01,1,"",0.01/1))
+      -- params:add_control(i.."size"..scene,"size",controlspec.new(0.1,15,"exp",0.01,1,"",0.01/1))
+      params:add_control(i.."size"..scene,"size",controlspec.new(0.1,5,"exp",0.01,1,"",0.01/1))
       params:set_action(i.."size"..scene,function(value)
         engine.size(i,util.clamp(value*clock.get_beat_sec()/10,0.001,util.linlin(1,40,1,0.1,params:get(i.."density"..scene))))
       end)
@@ -361,20 +373,16 @@ function e:setup_params()
         local p=params:lookup_param(i.."density"..scene)
         p:bang()
       end)
-      params:add_control(i.."density_jitter"..scene,"density jitter",controlspec.new(0,1,"lin",0.1,0,"",1/10))
+      params:add_control(i.."density_jitter"..scene,"density jitter",controlspec.new(0,1,"lin",0.1,0,"",1/100))
       params:set_action(i.."density_jitter"..scene,function(value) engine.density_jitter(i,value*params:get(i.."density_jitter_mult"..scene)) end)
       params:add_control(i.."density_jitter_mult"..scene,"density jitter mult",controlspec.new(1,10,"lin",1,1,"",1/10))
       params:set_action(i.."density_jitter_mult"..scene,function(value) engine.density_jitter(i,value*params:get(i.."density_jitter"..scene)) end)
       
-      params:add_option(i.."density_sync_external"..scene,"density sync ext",{"off","on"},(i==1 and scene ==1) and 2 or 1)
-
-
-      params:add_control(i.."pitch"..scene,"pitch",controlspec.new(-48,48,"lin",1,0,"note",1/96))
+      params:add_control(i.."pitch"..scene,"pitch",controlspec.new(-48,48,"lin",0.1,0,"note",1/960))
       params:set_action(i.."pitch"..scene,function(value) engine.pitch(i,math.pow(0.5,-value/12)) end)
-      params:add_option(i.."pitch_sync_external"..scene,"pitch sync ext",{"off","on"},(i==1 and scene ==1) and 2 or 1)
-
-      params:add_taper(i.."spread_sig"..scene,"spread sig",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig"..scene,function(value) engine.spread_sig(i,-value/1000) end)
+      
+      params:add_taper(i.."spread_sig"..scene,"spread sig",0,1,0)
+      params:set_action(i.."spread_sig"..scene,function(value) engine.spread_sig(i,-value) end)
       
       params:add_taper(i.."spread_sig_offset1"..scene,"spread sig offset 1",0,500,0,5,"ms")
       params:set_action(i.."spread_sig_offset1"..scene,function(value) engine.spread_sig_offset1(i,-value/1000) end)
@@ -562,8 +570,20 @@ function e:setup_params()
 
   -- self:bang(1)
   params:bang()
-
+  clock.run(e.init_active_echo)
   e.inited=true
+end
+
+function e.init_active_echo()
+  clock.sleep(0.5)
+  local scene=params:get("echoscene")
+  for _,param_name in ipairs(e.param_list_echo) do
+    local p=params:lookup_param(param_name..scene)
+    if p.t~=6 then 
+      p:bang() 
+      print(p.name,scene,"bang")  
+    end
+  end
 end
 
 function e:cleanup()

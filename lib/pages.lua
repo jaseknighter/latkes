@@ -49,7 +49,6 @@ function pages:display_frame()
   screen.fill()
   screen.move(self.composition_left,self.composition_top)
   screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left,self.composition_bottom-self.composition_top)
-  screen.level(5)
   screen.stroke()
 end
 
@@ -343,17 +342,14 @@ function pages:redraw(page_num)
       sig_positions=waveform_sig_positions[voice.."granulated"]
       waveforms[show_waveform_name]:redraw(sig_positions,slice_pos)
     end
+    screen.level(10)  
+    screen.move(self.composition_left,self.composition_bottom+7)
+    screen.line_rel(self.composition_right-self.composition_left,0)
     screen.level(15)  
+    -- local sample_used = params:get(self.p1ui.selected_voice.."sample_length")/
+    local sample_length = (params:get(voice.."sample_length"))/live_buffer_length
+    screen.rect(self.composition_left,self.composition_bottom+5,(self.composition_right-self.composition_left)*sample_length,4)
 
-
-    if mode == "recording" then
-      print("recording in progress...")
-      screen.move(composition_left,composition_top-6)
-      screen.text("recording in progress...")
-      if waveforms["composed"].waveform_samples then
-        waveforms["composed"]:redraw(composed_sig_pos)
-      end
-    end
   elseif page_num == 2 then
         
     -- draw reflector separators, labels, and animated bars
