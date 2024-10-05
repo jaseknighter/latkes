@@ -9,7 +9,8 @@ EGlut {
   var pg;
 	var effect;
   var grain_modes; //grain_mode 0=live grain_mode; 1=file grain_mode
-	var <buffers;
+	var <live_buffers;
+	var <file_buffers;
 	var <gvoices;
 	var effectBus;
 	var <phases;
@@ -23,8 +24,8 @@ EGlut {
   var osc_funcs;
   var recorders;
   var live_streamer;
-  var live_buffer;
-  var live_buffer_length = 120;
+  // var live_buffer;
+  var buffer_length = 120;
     
 
 	*new {
@@ -38,56 +39,72 @@ EGlut {
   }
 
 	// read from an existing buffer into the granulation buffsers
-	readBuf { arg i, buf, mode,sample_duration;
-    ["readBuf set voices and buffers",i,buf,buffers, mode].postln;
-    // if(buffers[i].sampleRate!=nil, {
-    //   buffers[i].zero;
-    //   buffers[i+ngvoices].zero;
+	setBufStartEnd { arg i, buf, mode,sample_duration;
+    // ["setBufStartEnd set voices and live_buffers",i,buf,live_buffers, mode].postln;
+    // if(live_buffers[i].sampleRate!=nil, {
+    //   live_buffers[i].zero;
+    //   live_buffers[i+ngvoices].zero;
     // });
 
     if (mode.notNil,{
       this.setGrainMode(mode);
     });
     // duplicate GrainBuf for stereo granulation
-    gvoices[i].set(\buf, buf);
-    gvoices[i].set(\buf_pos_end, sample_duration/live_buffer_length);
-    // buffers[i] = buf;
-    gvoices[i].set(\buf2, buf);
-    gvoices[i].set(\buf_pos_end, sample_duration/live_buffer_length);
-    // buffers[i+ngvoices] = buf;
+    // gvoices[i].set(\buf, buf);
+    // gvoices[i+ngvoices].set(\buf2, buf);
+    gvoices[i].set(\buf_pos_end, sample_duration/buffer_length);
+    // live_buffers[i+ngvoices] = buf;
 
     
-    ["readBuf done i,modem,sample_duration,live_buffer_length",i,mode,sample_duration,live_buffer_length].postln;
+    // ["setBufStartEnd done i,modem,sample_duration,buffer_length",i,mode,sample_duration,buffer_length].postln;
 	}
 
   // disk read
-	readDisk { arg i, path;
-		if(buffers[i].notNil, {
-      grain_modes[i]=1;
-			if (File.exists(path), {
-				// load stereo files and duplicate GrainBuf for stereo granulation
-        var newbuf,newbuf2;
-        var buflen=60;
-        ["read disk"].postln;
-        // newbuf = Buffer.readChannel(context.server, path, 0, -1, [0], {
-        newbuf = Buffer.readChannel(context.server, path, 0, s.sampleRate * buflen, [0], {
-          // if (buffers[i].sampleRate!=nil,{
-          //   buffers[i].free;
-          // });
-					gvoices[i].set(\buf, newbuf);
-					buffers[i] = newbuf;
-          ["newbuf",i,buffers[i]].postln;
-				});
-				// newbuf2 = Buffer.readChannel(context.server, path, 0, -1, [1], {
-				newbuf2 = Buffer.readChannel(context.server, path, 0, -1, [0], {
-					// if (buffers[i+ngvoices].sampleRate!=nil,{
-          //   buffers[i+ngvoices].free;
-          //   });
-				  gvoices[i].set(\buf2, newbuf2);
-					buffers[i+ngvoices] = newbuf2;
-				});
-			});
-		});
+	readDisk { arg i, path, sample_duration;
+    var startframe = 0;
+		// if(file_buffers[i].notNil, {
+    grain_modes[i]=1;
+    if (File.exists(path), {
+      // load stereo files and duplicate GrainBuf for stereo granulation
+      var newbuf,newbuf2;
+      var file, numChannels;
+      var soundfile = SoundFile.new;
+      soundfile.openRead(path.asString.standardizePath);
+      numChannels = soundfile.numChannels;
+      soundfile.close;
+      ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_duration].postln;
+      // file_buffers[i].allocReadChannelMsg(context.server, path, channels:[0], completionMessage:{
+       newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
+        arg buf;
+        file_buffers[i].free;
+        file_buffers[i] = buf;
+        gvoices[i].set(\buf, file_buffers[i]);
+        gvoices[i].set(\buf_pos_end, sample_duration/buffer_length);
+
+        ["newbuf",i,file_buffers[i]].postln;
+      });
+      if (numChannels > 1,{
+        "stereo file: read 2nd channel into buffer's 2nd channel".postln;
+        // file_buffers[i+ngvoices].allocReadChannelMsg(context.server, path, channels:[1], completionMessage:{
+         newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
+          arg buf;
+          file_buffers[i+ngvoices].free;
+          file_buffers[i+ngvoices] = buf;
+          gvoices[i+ngvoices].set(\buf2, file_buffers[i+ngvoices]);
+          gvoices[i+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
+          ["newbuf2",i,file_buffers[i+ngvoices]].postln;
+        });
+      },{
+        arg buf;
+        "mono file: read 1st channel into buffer's 2nd channel".postln;
+        newbuf2 = file_buffers[i];
+        file_buffers[i+ngvoices] = newbuf2;
+        gvoices[i+ngvoices].set(\buf2, file_buffers[i+ngvoices]);
+        gvoices[i+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
+        ["newbuf2",i,file_buffers[i+ngvoices]].postln;
+      });
+    });
+		// });
 	}
 
 
@@ -101,7 +118,6 @@ EGlut {
 
     "init eglut".postln;
     osc_funcs=Dictionary.new();
-    recorders=Dictionary.new();
     
     lua_sender = NetAddr.new("127.0.0.1",10111);   
     sc_sender=NetAddr.new("127.0.0.1",57120);   
@@ -114,10 +130,19 @@ EGlut {
       1;
     });
 
-    buffers = Array.fill(ngvoices*2, { arg i;
+    live_buffers = Array.fill(ngvoices*2, { arg i;
       Buffer.alloc(
         s,
-        s.sampleRate * live_buffer_length,
+        s.sampleRate * buffer_length,
+      );
+    });
+
+    s.sync;
+
+    file_buffers = Array.fill(ngvoices*2, { arg i;
+      Buffer.alloc(
+        s,
+        s.sampleRate * buffer_length,
       );
     });
 
@@ -126,45 +151,38 @@ EGlut {
     ["rec_phase",rec_phase].postln;
     
     SynthDef("live_streamer", {
-      arg in=0,out=0,phase,
+      arg out=0, in=0, phase,
           buf=0, rate=1,
           pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=1,
-          // pos=0,buf_pos_start=0,sample_duration=10,t_reset_pos=1,
-          // pos=0,buf_pos_start=0,buf_pos_end=1,sample_duration=10,t_reset_pos=1,
-          // dry_wet=1,
           write_live_stream_enabled=1,
           rec_level=1,pre_level=0;
       var buf_dur,buf_pos;
       var sig=SoundIn.ar(in);
-	    // var dry_sig=LinLin.kr(dry_wet,1,0,0,1);
-      // var wet_sig=LinLin.kr(dry_wet,0,1,0,1);
-      var rec_pos;
-      // var rec_buf_reset = Impulse.kr(1);
-      var rec_buf_reset = Impulse.kr((buf_pos_end*live_buffer_length).reciprocal);
-
+      var rec_buf_reset = Impulse.kr((buf_pos_end*buffer_length).reciprocal);
       buf_dur = BufDur.kr(buf);
       buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
         start:buf_pos_start, end:buf_pos_end, resetPos: pos);
       
-      // dry_sig=min(1,dry_sig);
-      // wet_sig=max(0,wet_sig);
-      // RecordBuf.ar(sig*wet_sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
-      // [rec_buf_reset,buf_pos].poll;
-      
       RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: rec_buf_reset * write_live_stream_enabled, doneAction: 0);
-      // RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: write_live_stream_enabled, doneAction: 0);
       
       Out.kr(rec_phase.index, buf_pos);
-      // Out.ar(out,sig*dry_sig);
     }).add;
+
+    s.sync;
+    recorders = Array.fill(ngvoices*2, { arg voice;
+      (["add recorder",ngvoices,voice]).postln;
+      Synth(\live_streamer, [\in,0,\buf,live_buffers[voice]]);
+    });
+    s.sync;
+    recorders.postln;
 
     SynthDef(\synth, {
       arg voice, out, effectBus, phase_out, level_out, buf, buf2,
       gate=0, pos=0, 
       buf_pos_start=0, 
       buf_pos_end=1, 
-      sample_duration=10/120,
+      sample_duration=10/buffer_length,
       speed=1, jitter=0, spread_sig=0, voice_pan=0,	
       size=0.1, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
       t_reset_pos=0, cutoff=20000, q, send=0, 
@@ -178,12 +196,13 @@ EGlut {
       var trig_rnd;
       var density_jitter_sig;
       var jitter_sig, jitter_sig2, jitter_sig3, jitter_sig4;
-      var sig_pos, sig_pos1, sig_pos2, sig_pos3, sig_pos4;
+      var sig_pos;
+      var sig_pos1, sig_pos2, sig_pos3, sig_pos4;
+      var sig2_pos1, sig2_pos2, sig2_pos3, sig2_pos4;
+      var active_sig_pos1, active_sig_pos2, active_sig_pos3, active_sig_pos4;
       var buf_dur;
       var pan_sig;
       var pan_sig2;
-      var buf_pos;
-      var sig;
 
       var env;
       var level=1;
@@ -191,11 +210,16 @@ EGlut {
       var main_vol=1.0/(1.0+subharmonics+overtones);
       var subharmonic_vol=subharmonics/(1.0+subharmonics+overtones);
       var overtone_vol=overtones/(1.0+subharmonics+overtones);
-      var maxgraindur=ptr_delay/speed.abs;
+      // var maxgraindur=ptr_delay/speed.abs;
       var ptr;
       var reset_pos=1;
-
-
+      var sig,sig2;
+      var buf_pos, buf_pos2, out_of_window=0;
+      var phasor_start, phasor_end; 
+      var localin;
+      var switch=0,switch1,switch2,switch3,switch4;
+      var reset_sig_ix=0,crossfade;
+      
       pos = pos * buf_pos_end;
 
       density_jitter_sig = TRand.kr(trig: Impulse.kr(density),
@@ -220,22 +244,54 @@ EGlut {
         lo: 1-(2*spread_pan),
         hi: 1);
 
+      // set the jitter signal and make sure it is only jittering
+      // in the direction of the playhead.
+      //      note: this is required for getting rid of clicks 
+      //      when the playhead is outside the window)
       jitter_sig = TRand.kr(trig: grain_trig,
-        lo: buf_dur.reciprocal.neg * jitter,
-        hi: buf_dur.reciprocal * jitter);
+        lo: (speed < 0) * buf_dur.reciprocal.neg * jitter,
+        hi: (speed >= 0) * buf_dur.reciprocal * jitter);
       jitter_sig2 = TRand.kr(trig: grain_trig,
-        lo: buf_dur.reciprocal.neg * jitter,
-        hi: buf_dur.reciprocal * jitter);
+        lo: (speed < 0) * buf_dur.reciprocal.neg * jitter,
+        hi: (speed >= 0) * buf_dur.reciprocal * jitter);
       jitter_sig3 = TRand.kr(trig: grain_trig,
-        lo: buf_dur.reciprocal.neg * jitter,
-        hi: buf_dur.reciprocal * jitter);
+        lo: (speed < 0) * buf_dur.reciprocal.neg * jitter,
+        hi: (speed >= 0) * buf_dur.reciprocal * jitter);
       jitter_sig4 = TRand.kr(trig: grain_trig,
-        lo: buf_dur.reciprocal.neg * jitter,
-        hi: buf_dur.reciprocal * jitter);
+        lo: (speed < 0) * buf_dur.reciprocal.neg * jitter,
+        hi: (speed >= 0) * buf_dur.reciprocal * jitter);
 
 
 
       reset_pos = pos;
+
+      // modulate the start/stop
+  		phasor_start = buf_pos_start+((size)/buffer_length);
+  		phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end-(size/buffer_length));
+      // phasor_start = buf_pos_start + 0.001;
+      // phasor_end = buf_pos_end - 0.001;
+
+  		// LocalIn collects a trigger whenever the playheads leave the buffer window.
+    	localin = LocalIn.kr(1);
+
+  	  // find all the playhead positions outside the window
+      switch1 = (BinaryOpUGen('==', localin, 1)) + (BinaryOpUGen('==', localin, 11)) + (BinaryOpUGen('==', localin, 111)) + (BinaryOpUGen('==', localin, 1111));
+      switch1 = switch1 > 0;
+      switch2 = (BinaryOpUGen('==', localin, 10)) + (BinaryOpUGen('==', localin, 11)) + (BinaryOpUGen('==', localin, 110)) + (BinaryOpUGen('==', localin, 111)) + (BinaryOpUGen('==', localin, 1010)) + (BinaryOpUGen('==', localin, 1011)) + (BinaryOpUGen('==', localin, 1111)) ;
+      switch2 = switch2 > 0;
+      switch3 = (BinaryOpUGen('==', localin, 100)) + (BinaryOpUGen('==', localin, 101)) + (BinaryOpUGen('==', localin, 110)) + (BinaryOpUGen('==', localin, 111)) + (BinaryOpUGen('==', localin, 1100)) + (BinaryOpUGen('==', localin, 1110)) + (BinaryOpUGen('==', localin, 1111)) ;
+      switch3 = switch3 > 0;
+      switch4 = (BinaryOpUGen('==', localin, 1000)) + (BinaryOpUGen('==', localin, 1001)) + (BinaryOpUGen('==', localin, 1010)) + (BinaryOpUGen('==', localin, 1011)) + (BinaryOpUGen('==', localin, 1100)) + (BinaryOpUGen('==', localin, 1101)) + (BinaryOpUGen('==', localin, 1110)) + (BinaryOpUGen('==', localin, 1111));
+      switch4 = switch4 > 0;      
+
+      // find the first playhead outside the window
+      reset_sig_ix = (switch1 > 0) * 1;
+      reset_sig_ix = reset_sig_ix + ((reset_sig_ix < 1) * (switch2 > 0 * 2));
+      reset_sig_ix = reset_sig_ix + ((reset_sig_ix < 1) * (switch3 > 0 * 3));
+      reset_sig_ix = reset_sig_ix + ((reset_sig_ix < 1) * (switch4 > 0 * 4));
+
+      switch = reset_sig_ix > 0;
+
       buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * speed,
         start:buf_pos_start, end:buf_pos_end, resetPos: reset_pos);
@@ -243,20 +299,47 @@ EGlut {
       sig_pos = buf_pos;
       sig_pos = (sig_pos*(1-sync_to_rec_head)) + (rec_phase.kr.asInteger*sync_to_rec_head);
       sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))).wrap(0,buf_pos_end);
-      // sig_pos = max(sig_pos,0);
-      // sig_pos = min(sig_pos,1);
-      // sig_pos = (sig_pos * ((pos/buf_pos_end) < 1)) + (not((pos/buf_pos_end)<1));
       spread_sig = (spread_sig*buf_pos_end)/4;
-      sig_pos1=(sig_pos+jitter_sig).wrap(0,buf_pos_end);
-      sig_pos2=(sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(0,buf_pos_end);
-      sig_pos3=(sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,buf_pos_end);
-      sig_pos4=(sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,buf_pos_end);
 
-      ([sig_pos <= buf_pos_start, sig_pos >= buf_pos_end]).poll;
+      // add jitter and spread to each signal position
+      sig_pos1 = (sig_pos+jitter_sig).wrap(0,buf_pos_end);
+      sig_pos2 = (sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(0,buf_pos_end);
+      sig_pos3 = (sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,buf_pos_end);
+      sig_pos4 = (sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,buf_pos_end);
+      
+      sig2_pos1 = sig_pos1;
+      sig2_pos2 = sig_pos2;
+      sig2_pos3 = sig_pos3;
+      sig2_pos4 = sig_pos4;
 
-      // scale sig_pos sent to lua to be proportional to the variable sample duration value,
-      // not the entire buffer value
-      SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, sig_pos1/buf_pos_end, sig_pos2/buf_pos_end, sig_pos3/buf_pos_end, sig_pos4/buf_pos_end]);
+
+      // if a switch var is < 1 use the correspoinding sig position
+      // if a switch var is > 0:
+      //     set the corresponding sig position to the start or end 
+      //     of the buffer currently being used,
+      //     depending on the direction the playhead is moving
+      sig_pos1 = (sig_pos1 * (switch1 < 1)) + (sig_pos1 * (switch1 > 0) * (speed > 0) * buf_pos_end) + (sig_pos1 * (switch1 > 0) * (speed <= 0) * buf_pos_start); 
+      sig_pos2 = (sig_pos2 * (switch2 < 1)) + (sig_pos2 * (switch2 > 0) * (speed > 0) * buf_pos_end) + (sig_pos2 * (switch2 > 0) * (speed <= 0) * buf_pos_start); 
+      sig_pos3 = (sig_pos3 * (switch3 < 1)) + (sig_pos3 * (switch3 > 0) * (speed > 0) * buf_pos_end) + (sig_pos3 * (switch3 > 0) * (speed <= 0) * buf_pos_start); 
+      sig_pos4 = (sig_pos4 * (switch4 < 1)) + (sig_pos4 * (switch4 > 0) * (speed > 0) * buf_pos_end) + (sig_pos4 * (switch4 > 0) * (speed <= 0) * buf_pos_start); 
+
+      // if a switch var is > 1 use the correspoinding sig position
+      // if a switch var is < 0:
+      //     set the corresponding sig position to the start or end 
+      //     of the buffer currently being used,
+      //     depending on the direction the playhead is moving
+      sig2_pos1 = (sig2_pos1 * (switch1 > 0)) + (sig2_pos1 * (switch1 < 1) * (speed > 0) * buf_pos_end) + (sig2_pos1 * (switch1 < 1) * (speed <= 0) * buf_pos_start); 
+      sig2_pos2 = (sig2_pos2 * (switch2 > 0)) + (sig2_pos2 * (switch2 < 1) * (speed > 0) * buf_pos_end) + (sig2_pos2 * (switch2 < 1) * (speed <= 0) * buf_pos_start); 
+      sig2_pos3 = (sig2_pos3 * (switch3 > 0)) + (sig2_pos3 * (switch3 < 1) * (speed > 0) * buf_pos_end) + (sig2_pos3 * (switch3 < 1) * (speed <= 0) * buf_pos_start); 
+      sig2_pos4 = (sig2_pos4 * (switch4 > 0)) + (sig2_pos4 * (switch4 < 1) * (speed > 0) * buf_pos_end) + (sig2_pos4 * (switch4 < 1) * (speed <= 0) * buf_pos_start); 
+
+      active_sig_pos1 = ((switch1 < 1) * sig_pos1) + ((switch1 > 0) * sig2_pos1);
+      active_sig_pos2 = ((switch2 < 1) * sig_pos2) + ((switch2 > 0) * sig2_pos2);
+      active_sig_pos3 = ((switch3 < 1) * sig_pos3) + ((switch3 > 0) * sig2_pos3);
+      active_sig_pos4 = ((switch4 < 1) * sig_pos4) + ((switch4 > 0) * sig2_pos4);
+
+
+      SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, active_sig_pos1/buf_pos_end, active_sig_pos2/buf_pos_end, active_sig_pos3/buf_pos_end, active_sig_pos4/buf_pos_end]);
 
       sig = GrainBuf.ar(
             numChannels: 2, 
@@ -268,7 +351,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:96,//96/2,//96,
+            maxGrains:96/2,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -281,7 +364,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:96,//96/2,//96,
+            maxGrains:96/2,//96,
             mul:main_vol*0.5,
           )+
 
@@ -296,7 +379,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:72,//24,//72,
+            maxGrains:72/2,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -309,7 +392,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:72,//24,//72,
+            maxGrains:72/2,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -322,7 +405,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:32,//24,//32,
+            maxGrains:32/2,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -335,7 +418,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:32,//24,//32,
+            maxGrains:32/2,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -348,7 +431,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//24,
+            maxGrains:24/2,//24,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -361,7 +444,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:24,//24,
+            maxGrains:24/2,//24,
             mul:main_vol*0.5,
           )
 
@@ -378,7 +461,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:24,//72,
+            maxGrains:72/2,//72,
             mul:subharmonic_vol,
           )+
           GrainBuf.ar(
@@ -391,7 +474,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:24,//72,
+            maxGrains:72/2,//72,
             mul:subharmonic_vol,
           )+
         GrainBuf.ar(
@@ -404,7 +487,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*2,
             envbufnum:gr_envbuf,
-            maxGrains:24,//32,
+            maxGrains:32/2,//32,
             mul:overtone_vol*0.7,
           )+
           GrainBuf.ar(
@@ -417,7 +500,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*2,
             envbufnum:gr_envbuf,
-            maxGrains:24,//32,
+            maxGrains:32/2,//32,
             mul:overtone_vol*0.7,
           )+
         GrainBuf.ar(
@@ -430,7 +513,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*4,
             envbufnum:gr_envbuf,
-            maxGrains:24,//24,
+            maxGrains:24/2,//24,
             mul:overtone_vol*0.3,
           )+
           GrainBuf.ar(
@@ -443,13 +526,211 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*4,
             envbufnum:gr_envbuf,
-            maxGrains:24,//24,
+            maxGrains:24/2,//24,
             mul:overtone_vol*0.3,
       );
-      // maxGrains:24,//[128,256,64,128,64]/2,
-      // mul:[0.125,0.625,0.05,0.15,0.05]/2,
+
+      sig2 = GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos1,
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:96/2,//96,
+            mul:main_vol*0.5,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos1, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:96/2,//96,
+            mul:main_vol*0.5,
+          )+
+
+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos2, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:72/2,//72,
+            mul:main_vol*0.5,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos2, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:72/2,//72,
+            mul:main_vol*0.5,
+          )+
+        GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos3, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:32/2,//32,
+            mul:main_vol*0.5,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos3, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:32/2,//32,
+            mul:main_vol*0.5,
+          )+
+        GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos4, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:24/2,//24,
+            mul:main_vol*0.5,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos4, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch,
+            envbufnum:gr_envbuf,
+            maxGrains:24/2,//24,
+            mul:main_vol*0.5,
+          )
+
+
+
+          +
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos2, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch/2,
+            envbufnum:gr_envbuf,
+            maxGrains:72/2,//72,
+            mul:subharmonic_vol,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos2, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch/2,
+            envbufnum:gr_envbuf,
+            maxGrains:72/2,//72,
+            mul:subharmonic_vol,
+          )+
+        GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos3, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch*2,
+            envbufnum:gr_envbuf,
+            maxGrains:32/2,//32,
+            mul:overtone_vol*0.7,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos3, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch*2,
+            envbufnum:gr_envbuf,
+            maxGrains:32/2,//32,
+            mul:overtone_vol*0.7,
+          )+
+        GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf, 
+            pos: sig2_pos4, 
+            interp: 2, 
+            pan: pan_sig,
+            rate:pitch*4,
+            envbufnum:gr_envbuf,
+            maxGrains:24/2,//24,
+            mul:overtone_vol*0.3,
+          )+
+          GrainBuf.ar(
+            numChannels: 2, 
+            trigger:grain_trig, 
+            dur:size, 
+            sndbuf:buf2, 
+            pos: sig2_pos4, 
+            interp: 2, 
+            pan: pan_sig2,
+            rate:pitch*4,
+            envbufnum:gr_envbuf,
+            maxGrains:24/2,//24,
+            mul:overtone_vol*0.3,
+      );
       
-      
+      //determine if any of the four "active" playheads are outside the buffer window
+      out_of_window = ((1*((active_sig_pos1 > phasor_end) + (active_sig_pos1 < phasor_start))) +
+                       (10*((active_sig_pos2 > phasor_end) + (active_sig_pos2 < phasor_start))) +
+                       (100*((active_sig_pos3 > phasor_end) + (active_sig_pos3 < phasor_start))) +
+                       (1000*((active_sig_pos4 > phasor_end) + (active_sig_pos4 < phasor_start))));
+
+
+      LocalOut.kr(out_of_window);
+
+      // crossfade bewteen the two sounds over 50 milliseconds
+      // ([sig[0],sig[1]]).poll;
+      sig=SelectX.ar(Lag.kr(Changed.kr(switch),0.01),[sig,sig2]);
 
       
       sig = BLowPass4.ar(sig, cutoff, q);
@@ -459,7 +740,6 @@ EGlut {
       // sig = Compander.ar(sig,sig,0.25)/8;
       sig = Balance2.ar(sig[0],sig[1],voice_pan);
       env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
-
       level = env;
       Out.ar(out, sig * level * gain);
       Out.kr(phase_out, sig_pos);
@@ -475,7 +755,7 @@ EGlut {
       // sig = CombL.ar(in: sig, maxechotime: 1, echotime: 0.01, decaytime: damp, mul: 1.0, add: 0.0);
       // sig = CombL.ar(in: sig, maxechotime: 1, echotime: echoTime, decaytime: damp, mul: 1.0, add: 0.0);
 
-      sig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
+      // sig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
       Out.ar(out, sig * 4 * echoVol);
       
     }).add;
@@ -502,8 +782,8 @@ EGlut {
         \effectBus, effectBus.index,
         \phase_out, phases[i].index,
         \level_out, levels[i].index,
-        \buf, buffers[i],
-        \buf2, buffers[i+ngvoices],
+        \buf, live_buffers[i],
+        \buf2, live_buffers[i+ngvoices],
         // \gr_envbuf, -1
         \gr_envbuf, gr_envbufs[i]
       ], target: pg);
@@ -520,8 +800,8 @@ EGlut {
     thisEngine.addCommand("echo_mod_depth", "f", { arg msg; effect.set(\modDepth, msg[1]); });
     thisEngine.addCommand("echo_mod_freq", "f", { arg msg; effect.set(\modFreq, msg[1]); });
 
-    thisEngine.addCommand("read", "is", { arg msg;
-      this.readDisk(msg[1] - 1, msg[2]);
+    thisEngine.addCommand("read", "isf", { arg msg;
+      this.readDisk(msg[1] - 1, msg[2],msg[3]);
     });
 
     thisEngine.addCommand("seek", "if", { arg msg;
@@ -535,7 +815,7 @@ EGlut {
 
       pos = msg[2];
       gvoices[voice].set(\pos, pos);
-      // gvoices[voice].set(\t_reset_pos, 1 + 110/120);
+      // gvoices[voice].set(\t_reset_pos, 1 + 110/buffer_length);
       gvoices[voice].set(\t_reset_pos, 1);
       gvoices[voice].set(\sync_to_rec_head, 0);
     });
@@ -705,60 +985,41 @@ EGlut {
         val
       });
 
-    // 	thisEngine.addPoll(("level_" ++ (i+1)).asSymbol, {
-    // 		var val = levels[i].getSynchronous;
-    // 		val
-    // 	});
     });
 
-    // seek_tasks = Array.fill(ngvoices, { arg i;
-    //   Routine {}
-    // });
-
-    // osc_funcs.put("eglut_sig_pos",
-      // OSCFunc.new({ |msg,time,addr,recvPort|
-        // var pos=msg[3];
-        // msg[3].postln;
-        // recorders.at(\live_streamer).set(\pos,pos)
-      // },"/sc_eglut/grain_sig_pos");
-    // );
-    // osc_funcs.put("live_audio_dry_wet",
-    //   OSCFunc.new({ |msg,time,addr,recvPort|
-    //     recorders.at(\live_streamer).set(\dry_wet,msg[1]);
-    //   },"/sc_eglut/live_audio_dry_wet");
-    // );     
     osc_funcs.put("live_rec_level",
       OSCFunc.new({ |msg,time,addr,recvPort|
-        recorders.at(\live_streamer).set(\rec_level,msg[1]);
+        var rec_level = msg[1];
+        var voice = msg[2];
+        if(recorders.at(voice).notNil,{
+          recorders.at(voice).set(\rec_level,rec_level);
+          recorders.at(voice+ngvoices).set(\rec_level,rec_level);
+        })
       },"/sc_eglut/live_rec_level");
     );
     osc_funcs.put("live_pre_level",
       OSCFunc.new({ |msg,time,addr,recvPort|
-        recorders.at(\live_streamer).set(\pre_level,msg[1]);
+        var pre_level = msg[1];
+        var voice = msg[2];
+        if(recorders.at(voice).notNil,{
+          recorders.at(voice).set(\pre_level,pre_level);
+          recorders.at(voice+ngvoices).set(\pre_level,pre_level);
+        })
       },"/sc_eglut/live_pre_level");
     );     
     osc_funcs.put("granulate_live",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        // var live_buffer;
         var sample_duration=msg[2];
-        ["live_buffer_length,voice",sample_duration,live_buffer == nil, live_buffer_length,voice].postln;
-        // live_buffer.zero;
-        live_streamer.free;
-        recorders.add(\live_streamer ->
-          live_streamer=Synth(\live_streamer, [\buf,live_buffer,\sample_duration, sample_duration, \buf_pos_end, sample_duration/live_buffer_length,  \phase,rec_phase]);
-        );
-        lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
-        this.readBuf(voice,live_buffer,2,sample_duration);
-        // live_buffer = Buffer.alloc(s, s.sampleRate * live_buffer_length,completionMessage:{      
-        //   ["live streamer add at/phase",live_buffer,rec_phase.index,s.sampleRate].postln;
-        //   recorders.add(\live_streamer ->
-        //     live_streamer=Synth(\live_streamer, [\buf,live_buffer,\sample_duration, sample_duration, \phase,rec_phase]);
-        //   );
-        //   lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
-        //   this.readBuf(voice,live_buffer,2);
-        //   // ["gran_live",voice,live_buffer].postln;
-        // });
+        var phase=rec_phase.getSynchronous();
+
+        // ["phase",phase].postln;
+        [voice,voice+ngvoices,recorders].postln;
+        recorders[voice].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);
+        recorders[voice + ngvoices].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);
+        (["recorders: ",recorders[voice],recorders[voice + ngvoices]]).postln;
+        // lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_duration);
       },"/sc_osc/granulate_live");
     );   
 
@@ -789,18 +1050,19 @@ EGlut {
   ///////////////////////////////////
 
   free{
+    "eglut beeeee freeeeee".postln;
     osc_funcs.keysValuesDo({ arg k,val;
       val.free;
     });
-    recorders.keysValuesDo({ arg k,val;
-      val.free;
-    });
 
+    recorders.do({ arg recorder; recorder.free; });
     gvoices.do({ arg voice; voice.free; });
     phases.do({ arg bus; bus.free; });
     levels.do({ arg bus; bus.free; });
-    buffers.do({ arg b; b.free; });
+    live_buffers.do({ arg b; b.free; });
+    file_buffers.do({ arg b; b.free; });
     gr_envbufs.do({ arg b; b.free; });
+    live_streamer.free;
     effect.free;
     effectBus.free;
     rec_phase.free;

@@ -6,11 +6,17 @@ e.all_param_ids   = {}
 e.all_param_names = {}
 e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
+e.start_scene_params_at = 7
+
 e.param_list={
-  -- "param_value","grain_params",
-  -- "pos",
+  "sample_length",
+  "sample_mode",
+  "sample",
+  "live_rec_level",
+  "live_pre_level",
   "grain_params",
-  "play","volume","send","ptr_delay","speed","seek",
+  "play",
+  "volume","send","ptr_delay","speed","seek",
   "size","density","density_beat_divisor","density_jitter","density_jitter_mult",
   "pitch","spread_sig",
   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
@@ -158,8 +164,10 @@ function e:init_lattice()
 end
 
 
-function e:init(sample_selected_callback)
+function e:init(sample_selected_callback, num_voices, num_scenes)
   self.sample_selected_callback = sample_selected_callback
+  self.num_voices = num_voices or self.num_voices
+  self.num_scenes = num_scenes or self.num_scenes
   
 end
 
@@ -167,13 +175,25 @@ function e:on_sample_selected(voice,scene,file)
   self.sample_selected_callback(voice,file)
 end
 
-function e:bang(scene, bangscope)
+function e:bang(voice, scene, bangscope)
   bangscope = bangscope or 1
-  if bangscope < 3 then
-    for i=1,e.num_voices do
-      for _,param_name in ipairs(e.param_list) do
-        local p=params:lookup_param(i..param_name..scene)
-        if p.t~=6 then p:bang() end
+  if bangscope == 1 then
+    local start_voice=1
+    local end_voice = e.num_voices
+    if self.inited then 
+      start_voice = voice
+      end_voice = voice
+    end
+
+    for i=start_voice,end_voice do
+      for k,param_name in ipairs(e.param_list) do
+        local p
+        if k >= e.start_scene_params_at then
+          p=params:lookup_param(i..param_name..scene)
+        -- else
+        --   p=params:lookup_param(i..param_name)
+        end
+        if p and p.t~=6 then p:bang() end
       end
       -- local p=params:lookup_param(i.."pattern"..scene)
       -- p:bang()
@@ -184,7 +204,6 @@ function e:bang(scene, bangscope)
       local p=params:lookup_param(param_name..scene)
       if p.t~=6 then 
         p:bang() 
-        print(p.name,"bang")  
       end
     end
   end
@@ -209,37 +228,30 @@ function e:rebuild_params()
 end
 
 function e:load_file(voice,scene,file)
-  engine.read(voice,file)
+  local sample_length = params:get(voice.."sample_length")
+  engine.read(voice,file,sample_length)
   e:on_sample_selected(voice,scene,file)
 end
 
 function e:granulate_live(voice)
   local sample_length = params:get(voice.."sample_length")
-  print("granulate_live",voice,sample_length)
   osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_length})
 end
 
 function e:update_scene(voice,scene)
   e.active_scenes[voice]=scene
-  for _,param_id in ipairs(e.param_list) do
+  for p_ix,param_id in ipairs(e.param_list) do
     for i=1,e.num_scenes do
-      if i~=scene then
+      if i~=scene and p_ix >= e.start_scene_params_at then
         params:hide(voice..param_id..(i))
-        -- params:hide(voice..param_id..(3-scene))
       end
     end
-    params:show(voice..param_id..scene)
-    -- local p=params:lookup_param(i..param_id..scene)
-    -- p:bang()
-end
+    if p_ix >= e.start_scene_params_at then
+      params:show(voice..param_id..scene)
+    end
+  end
 
--- is this one needed????
-  e:bang(scene)      
-  -- local p=params:lookup_param(i.."pattern"..scene)
-  -- p:bang()
-  -- if params:get(i.."pattern"..scene)=="" or params:get(i.."pattern"..scene)=="[]" then
-    -- granchild_grid:toggle_playing_voice(i,false)
-  -- end
+  e:bang(voice,scene)      
   e:rebuild_params()
 end
 
@@ -261,7 +273,7 @@ function e:setup_params()
   local old_volume={0.25,0.25,0.25,0.25}
   
   for i=1,e.num_voices do
-    params:add_group("voice "..i,(#e.param_list*e.num_scenes)-1)
+    params:add_group("voice "..i,((#e.param_list-e.start_scene_params_at)*e.num_scenes))
     params:add_option(i.."scene","scene",e.scene_labels,1)
     params:set_action(i.."scene",function(scene)
       scene=scene and scene or 1
@@ -269,7 +281,9 @@ function e:setup_params()
     end)
     params:add_control(i.."sample_length","sample length",controlspec.new(1,120.0,"exp",0.1,10,"s",0.1/120))
     params:set_action(i.."sample_length",function()
-      self:granulate_live(i)
+      if params:get(i.."sample_mode") == 2 then
+        self:granulate_live(i)
+      end
     end)
 
     local sample_modes={"off","live stream","recorded"}
@@ -279,21 +293,16 @@ function e:setup_params()
         if sample_modes[mode]=="off" then
           params:set(i.."play"..params:get(i.."scene"),1)
         elseif sample_modes[mode]=="live stream" then
-          print("gran live",i)
-          -- params:set("show_waveform",math.ceil(i*2))
           params:set(i.."play"..params:get(i.."scene"),1)
           params:set(i.."play"..params:get(i.."scene"),2)
           self:granulate_live(i)
         elseif sample_modes[mode]=="recorded" then
           local recorded_file = params:get(i.."sample")
           if recorded_file ~= "-" then
-            print("gran recorded",i,recorded_file)
-            e:load_file(i,e.active_scenes[i],recorded_file)
-            -- params:set("show_waveform",math.ceil(i*2))
-            -- params:set(i.."sample"..e.active_scenes[i],recorded_file)
-            -- self.sample_selected_callback(i,recorded_file)
+            e:load_file(i,e.active_scenes[i],recorded_file)            
           else
             print("no file selected to granulate")
+            params:set(i.."play"..params:get(i.."scene"),1)
             -- params:set(i.."play"..params:get(i.."scene"),1)
           end
         end
@@ -303,20 +312,39 @@ function e:setup_params()
     end)
     params:add_file(i.."sample","sample")
     params:set_action(i.."sample",function(file)
-      print("sample ",i,e.active_scenes[i],file)
-      if file~="-" then
-        e:load_file(i,e.active_scenes[i],file)
+      if params:get(i.."sample_mode") == 3 then
+        print("sample ",i,e.active_scenes[i],file)
+        if file~="-" then
+          e:load_file(i,e.active_scenes[i],file)
+        end
       end
     end)
-             
+    
+    params:add_control(i.."live_rec_level","live rec level",controlspec.new(0,1,"lin",0.01,1))
+    params:set_action(i.."live_rec_level",function(value) 
+      softcut.rec_level(i,value);
+      osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{value,i-1})
+    end)
+    params:add_control(i.."live_pre_level","live pre level",controlspec.new(0,1,"lin",0.01,0))
+    params:set_action(i.."live_pre_level",function(value) 
+      softcut.pre_level(i,value)
+      osc.send( { "localhost", 57120 }, "/sc_eglut/live_pre_level",{value,i-1})
+    end)
+  
+    params:add_separator(i.."grain_params","param values")
     for scene=1,e.num_scenes do
 
-      params:add_separator(i.."grain_params"..scene,"param values")
       
 
 
       params:add_option(i.."play"..scene,"play",{"off","on"},1)
-      params:set_action(i.."play"..scene,function(x) engine.gate(i,x-1) end)
+      params:set_action(i.."play"..scene,function(x) 
+        if params:get(i.."sample_mode") > 1 then
+          engine.gate(i,x-1) 
+        else
+          engine.gate(i,0) 
+        end
+      end)
 
       params:add_control(i.."volume"..scene,"volume",controlspec.new(0,1.0,"lin",0.05,1,"vol",0.05/1))
       -- params:add_control(i.."volume"..scene,"volume",controlspec.new(0,1.0,"lin",0.05,0.25,"vol",0.05/1))
@@ -460,7 +488,6 @@ function e:setup_params()
   params:add_option("echoscene","scene",e.scene_labels,1)
   params:set_action("echoscene",function(scene)
     for _,param_name in ipairs(e.param_list_echo) do
-      print(param_name,scene,e.num_scenes)
       for i=1,e.num_scenes do
         if i~=scene then
           params:hide(param_name..i)
@@ -470,16 +497,14 @@ function e:setup_params()
       local p=params:lookup_param(param_name..scene)
       p:bang()
     end
-    e:bang(scene,3)
+    e:bang(nil,scene,3)
     eglut:rebuild_params()
   end)
   for scene=1,e.num_scenes do
     -- effect controls
     -- echo output volume
     params:add_control("echo_volume"..scene,"*".."echo output volume",controlspec.new(0.0,1.0,"lin",0,0.5,""))
-    params:set_action("echo_volume"..scene,function(value) engine.echo_volume(value) 
-      print("evol"..scene,value)
-    end)
+    params:set_action("echo_volume"..scene,function(value) engine.echo_volume(value) end)
     -- echo time
     params:add_control("echo_time"..scene,"*".."echo time",controlspec.new(0,60.0,"lin",0.01,2.00,"",1/6000))
     params:set_action("echo_time"..scene,function(value) engine.echo_time(value) end)
@@ -503,8 +528,8 @@ function e:setup_params()
     params:set_action("echo_mod_freq"..scene,function(value) engine.echo_mod_freq(value) end)
   end
   
-  params:add_group("sync",7)
-  e.all_param_ids = e.table_concat(e.param_list,e.param_list_echo,11)
+  params:add_group("sync voice/scene params",7)
+  e.all_param_ids = e.table_concat(e.param_list,e.param_list_echo,e.start_scene_params_at)
   e.all_param_names=e.id_to_name(e.all_param_ids)
   table.insert(e.all_param_ids,1,"sample_mode")
   table.insert(e.all_param_ids,2,"sample")
@@ -522,10 +547,12 @@ function e:setup_params()
     local scene_to=params:get("sync_scene_selector_to")
     for i=1,#e.all_param_ids do
       local param=e.all_param_ids[i]
-      if i > 2 then
+      if i >= e.start_scene_params_at then
         local value_to_sync=params:get(voice_from..param..scene_from)    
         params:set(voice_to..param..scene_to,value_to_sync)
+        -- print(voice_to..param..scene_to,value_to_sync)
       else
+        -- print(voice_to..param,value_to_sync)
         local value_to_sync=params:get(voice_from..param)    
         params:set(voice_to..param,value_to_sync)
       end
@@ -539,7 +566,7 @@ function e:setup_params()
     local scene_from=params:get("sync_scene_selector")
     local voice_to=params:get("sync_voice_selector_to")
     local scene_to=params:get("sync_scene_selector_to")
-    if params:get("sync_selector") > 2 then
+    if params:get("sync_selector") >= e.start_scene_params_at then
       local value_to_sync=params:get(voice_from..selected_param..scene_from)
       params:set(voice_to..selected_param..scene_to,value_to_sync)
       -- print(selected_param,voice_from,scene_from,voice_to,scene_to,value_to_sync)
@@ -553,10 +580,10 @@ function e:setup_params()
   
   -- hide scenes 2-4 initially
   for i=1,e.num_voices do
-    print("e.param_list",e.param_list)
+    -- print("e.param_list",e.param_list)
     for _,param_name in ipairs(e.param_list) do
-      print(param_name)
-      for j=2,e.num_scenes do
+      -- print(param_name)
+      for j=e.start_scene_params_at,e.num_scenes do
         -- tab.print(i..param_name..j)
         params:hide(i..param_name..j)
       end
@@ -568,8 +595,7 @@ function e:setup_params()
     end
   end
 
-  -- self:bang(1)
-  params:bang()
+  self:bang(1,1)
   clock.run(e.init_active_echo)
   e.inited=true
 end
@@ -581,7 +607,6 @@ function e.init_active_echo()
     local p=params:lookup_param(param_name..scene)
     if p.t~=6 then 
       p:bang() 
-      print(p.name,scene,"bang")  
     end
   end
 end

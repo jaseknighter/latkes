@@ -11,7 +11,8 @@ function Waveform:new(args)
   return wf
 end
 
-function Waveform.load(path,max_len)
+function Waveform.load(voice,path,max_len)
+  print("waveform.load",voice,path,max_len)
   if path ~= "" then
     local ch, samples = audio.file_info(path)
     if ch > 0 and samples > 0 then
@@ -33,22 +34,25 @@ end
 
 function Waveform:set_samples(samples)
   self.waveform_samples = samples
+  -- tab.print(samples)
 end
 
 function Waveform:get_samples()
   return self.waveform_samples
 end
 
-function Waveform:display_sigs_pos(sigs_pos)
+function Waveform:display_sigs_pos(sigs_pos, highlight_sig_positions)
   --show signal position(s)
   if #sigs_pos > 0 then
-    screen.level(10)
-    screen.blend_mode(4 or blend_mode)   
+    -- if highlight_sig_positions == true then print("highlight_sig_positions",highlight_sig_positions) end
+    if highlight_sig_positions == true then screen.level(1) else screen.level(10) end
+    -- screen.level(15)
+    screen.blend_mode(blend_mode or 11)   
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
     for i=1,#sigs_pos do
       local sig_pos = sigs_pos[i]
       -- print(sig_pos)
-      screen.blend_mode(blend_mode or 4)   
+      screen.blend_mode(blend_mode or 11)   
       local height = util.round(self.composition_top-self.composition_bottom+6)
       local xloc = util.linlin(1,127,self.composition_left,self.composition_right,sig_pos*127)
       -- local xloc = util.linlin(1,127,self.composition_left,self.composition_right,math.floor(sig_pos*127))
@@ -59,36 +63,6 @@ function Waveform:display_sigs_pos(sigs_pos)
     end
   end
 end
-
-function Waveform:display_slices(slices)
-  screen.level(10)
-  screen.blend_mode(blend_mode or 4)   
-  for i=#slices/2, 1, -1 do
-    local ix_left = (i*2)-1
-    local ix_right = i*2
-    local slice_pos1 = math.floor(util.linlin(1,127, self.composition_left,self.composition_right, slices[ix_left]*127))
-    local slice_pos2 = math.ceil(util.linlin(0,127, self.composition_left,self.composition_right, slices[ix_right]*127))
-    -- local slice_num = math.floor((i+1)/2)
-    -- local selected_slice = params:get(params:get("selected_sample").."selected_gslice"..params:get(params:get("selected_sample").."scene"))
-    -- local text_level = slice_num == selected_slice and 15 or 0
-    local width = slice_pos2-slice_pos1
-    local height = self.composition_bottom-self.composition_top+2
-    -- screen.level(i==1 and 10 or 5)
-    screen.move(slice_pos1,self.composition_top-1)
-    screen.rect(slice_pos1, self.composition_top-1, width, height)
-    -- screen.move(slice_pos2,self.composition_top-2)
-    -- screen.line_rel(0, composition_bottom-composition_top)
-    -- screen.line_rel(0, 4)   
-    screen.fill()
-    -- screen.stroke()
-    -- screen.blend_mode(blend_mode)   
-    -- screen.level(text_level)
-    -- screen.move(slice_pos1-2,self.composition_top-3)
-    -- screen.text(slice_num)
-  end
-  -- screen.stroke()
-end
-
 
 function Waveform:display_waveform()
   local x_pos = 0
@@ -104,22 +78,17 @@ function Waveform:display_waveform()
   screen.stroke()
 end
 
-function Waveform:redraw(sigs_pos, slices)
+function Waveform:redraw(sigs_pos, highlight_sig_positions)
   if self.active==false then
     do return end
   end
 
   self:display_waveform()
 
-  --show slice positions
-  if slices then
-    self:display_slices(slices)
-  end
-
 
   --show signal(s) positions
   if sigs_pos then
-    self:display_sigs_pos(sigs_pos)
+    self:display_sigs_pos(sigs_pos, highlight_sig_positions)
   end
   screen.stroke()
   screen.blend_mode(0)   

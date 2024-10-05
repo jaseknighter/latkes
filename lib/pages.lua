@@ -13,20 +13,21 @@ function pages:init(args)
   self.frame_width = self.composition_right-self.composition_left
   self.frame_height = self.composition_bottom-self.composition_top
   
-  self.active_page=1
   self.p1ui={}
   self.p1ui.selected_ui_area_ix=2
   self.p1ui.selected_voice=1
   self.p1ui.selected_scene=1
+  self.p1ui.prev_scenes = {1,1,1,1}
   self.p1ui.ui_areas = {"mode","voice","scene"}
   self.p1ui.num_ui_areas=#self.p1ui.ui_areas
   self.p1ui.selected_ui_area=self.p1ui.ui_areas[self.p1ui.selected_ui_area_ix]      
-
-
+  
+  
   self.p2ui={}
   self.p2ui.selected_ui_area_ix=2
   self.p2ui.selected_voice=1
   self.p2ui.selected_scene=1
+  self.p2ui.prev_scenes = {1,1,1,1}
   self.p2ui.selected_reflector=nil  
   self.p2ui.ui_areas = {"mode","voice","scene"}
   for i=1,self.max_reflectors_per_scene do
@@ -53,11 +54,12 @@ function pages:display_frame()
 end
 
 function pages:get_selected_ui_elements()
-  if pages.active_page == 1 then
+  local active_page = params:get("active_page")
+  if active_page == 1 then
     local voice = self.p1ui.selected_voice
     local scene = self.p1ui.selected_scene
     return voice, scene
-  elseif pages.active_page == 2 then
+  elseif active_page == 2 then
     local voice = self.p2ui.selected_voice
     local scene = self.p2ui.selected_scene
     local reflector = self.p2ui.selected_reflector
@@ -66,9 +68,10 @@ function pages:get_selected_ui_elements()
 end
 
 function pages:get_active_ui_area()
-  if pages.active_page == 1 then
+  local active_page = params:get("active_page")
+  if active_page == 1 then
     return self.p1ui.selected_ui_area
-  elseif pages.active_page == 2 then
+  elseif active_page == 2 then
     return self.p2ui.selected_ui_area
   end
 end
@@ -112,6 +115,31 @@ function pages:get_active_reflector_button()
   return active_reflector_button
 end
 
+function pages.update_waveform_display(voice)
+  local active_mode = params:get(voice.."sample_mode")
+  local waveform_ix
+  if active_mode < 3 then
+    waveform_ix = voice+(voice-1)
+    params:set("show_waveform",waveform_ix)
+  else
+    waveform_ix = voice+voice
+    params:set("show_waveform",waveform_ix)
+  end
+end
+
+function pages:set_selected_ui_area(ix)
+  local active_page = params:get("active_page")
+  if active_page==1 then
+    self.p1ui.selected_ui_area_ix=ix
+    self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
+    self.p2ui.selected_ui_area_ix=ix
+    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
+  elseif active_page==2 then
+    self.p2ui.selected_ui_area_ix=ix
+    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
+  end
+end
+
 function pages:key(k,z)
   if k==1 then
     if z==1 then
@@ -132,46 +160,36 @@ function pages:key(k,z)
   end
 end
 
-function pages:set_selected_ui_area(ix)
-  print("ix1",ix)
-  if pages.active_page==1 then
-    self.p1ui.selected_ui_area_ix=ix
-    self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
-    self.p2ui.selected_ui_area_ix=ix
-    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
-  elseif pages.active_page==2 then
-    -- if ix < 4 then
-    --   self.p1ui.selected_ui_area_ix=ix
-    --   self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
-    -- end
-    print("ix2",ix)
-    self.p2ui.selected_ui_area_ix=ix
-    print("self.p2ui.selected_ui_area_ix",self.p2ui.selected_ui_area_ix)
-    self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
-    print("self.p2ui.selected_ui_area",self.p2ui.selected_ui_area)
-  end
-end
 function pages:enc(n,d)
-  if pages.active_page==1 then
+  local active_page = params:get("active_page")
+  if n==1 then
+    active_page=util.clamp(d+active_page,1,2)
+    params:set("active_page",active_page)
+  end
+
+  if active_page==1 then
     if n==2 then
       local ix=util.clamp(self.p1ui.selected_ui_area_ix+d,1,self.p1ui.num_ui_areas)
       self:set_selected_ui_area(ix)
     elseif n==3 then
+      local voice
       if self.p1ui.selected_ui_area=="mode" then
-        local voice = self.p1ui.selected_voice
+        voice = self.p1ui.selected_voice
         local smode = params:get(voice .. "sample_mode") + d
         params:set(voice .. "sample_mode", smode)
       elseif self.p1ui.selected_ui_area=="voice" then
-        local selected_voice = util.clamp(self.p1ui.selected_voice+d,1,eglut.num_voices)
-        self.p1ui.selected_voice = selected_voice
+        voice = util.clamp(self.p1ui.selected_voice+d,1,eglut.num_voices)
+        self.p1ui.selected_voice = voice
+        params:set("active_voice",self.p1ui.selected_voice)
       elseif self.p1ui.selected_ui_area=="scene" then
-        local voice = self.p1ui.selected_voice
+        voice = self.p1ui.selected_voice
         local selected_scene = util.clamp(params:get("rec_scene"..voice)+d,1,eglut.num_scenes)
         params:set("rec_scene"..voice,selected_scene)
         self.p1ui.selected_scene = selected_scene
+        params:set("active_scene",self.p1ui.selected_scene)
       end
     end
-  elseif pages.active_page==2 then
+  elseif active_page==2 then
     if alt_key == true then
       if n==3 then
         local voice, scene, reflector = self:get_selected_ui_elements()
@@ -229,11 +247,13 @@ function pages:enc(n,d)
       elseif self.p2ui.selected_ui_area=="voice" then
         local selected_voice = util.clamp(self.p2ui.selected_voice+d,1,eglut.num_voices)
         self.p2ui.selected_voice = selected_voice
+        params:set("active_voice",self.p2ui.selected_voice)
       elseif self.p2ui.selected_ui_area=="scene" then
         local voice = self.p2ui.selected_voice
         local selected_scene = util.clamp(params:get("rec_scene"..voice)+d,1,eglut.num_scenes)
         params:set("rec_scene"..voice,selected_scene)
         self.p2ui.selected_scene = selected_scene
+        params:set("active_scene",self.p2ui.selected_scene)
       elseif self.p2ui.selected_reflector_button then
         local voice, scene, reflector = self:get_selected_ui_elements()
         local reflector_button = self.p2ui.selected_reflector_button
@@ -268,6 +288,9 @@ function pages:enc(n,d)
 
       end
     end
+  end
+  if params:get("sync_waveform") == 2 then
+    self.update_waveform_display(params:get("active_voice"))
   end
 end
 
@@ -311,7 +334,7 @@ function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
       screen.stroke()
       screen.move(button_left+5,button_top+8)
       screen.level(0)
-      screen.text_center(scene)    
+      screen.text_center(eglut.scene_labels[scene])    
     end
     -- screen.move(self.composition_right+button_size+4,button_top+6)
     -- screen.level(0)
@@ -322,11 +345,12 @@ function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   end
 end
 
-function pages:redraw(page_num)
+function pages:redraw(page_num, show_sig_positions)
+  
   self:display_frame()
   local ui_area = self:get_active_ui_area()
   local voice, scene = self:get_selected_ui_elements()
-
+  
   -- draw sample mode, voice, and scene ui boxes
   self:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   if page_num == 1 then
@@ -337,10 +361,17 @@ function pages:redraw(page_num)
     show_waveform_name = waveform_names[show_waveform_ix]
     local show_waveform = waveforms[show_waveform_name]:get_samples()~=nil
     if show_waveform then
-      local sig_positions = nil
-      local voice=math.ceil((show_waveform_ix)/eglut.num_voices)
+      local sig_positions, highlight_sig_positions
+      -- local voice=math.ceil((show_waveform_ix)/eglut.num_voices)
+      local voice=params:get("active_voice")
+      if show_sig_positions[voice] then
+        highlight_sig_positions = true
+      else
+        highlight_sig_positions = false
+      end
       sig_positions=waveform_sig_positions[voice.."granulated"]
-      waveforms[show_waveform_name]:redraw(sig_positions,slice_pos)
+      -- print(waveform_sig_positions[voice.."granulated"],voice)
+      waveforms[show_waveform_name]:redraw(sig_positions,highlight_sig_positions)
     end
     screen.level(10)  
     screen.move(self.composition_left,self.composition_bottom+7)

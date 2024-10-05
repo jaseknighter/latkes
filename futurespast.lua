@@ -10,6 +10,7 @@
 
 ----------------------------
 -- bugs/improvement ideas:
+-- cleanup Engine_FuturesPast.sc
 -- why doesn't changing attack level make changes immediately, but requires a pause and addition value change to take effect?
 -- changing scene in a voice affects all voices
 -- fix panning for effects (greyhole)
@@ -26,11 +27,20 @@
 --   
 --
 -- diffs from granchild:
--- grain envelops
--- echo volume independent from grain volume
+-- grain envelopes
+-- echo removed to improve script performance
+--
+--
+-- credits:
+--    infinitedigits for code to remove clicks in looping buffers:
+--         https://infinitedigits.co/tinker/sampler/
+--         https://github.com/schollz/workshops/tree/main/2023-03-ceti-supercollider
+
 ----------------------------
 
 engine.name='Futurespast'
+
+reflection = require 'reflection'
 
 
 fileselect=include("lib/fileselect")
@@ -38,6 +48,7 @@ eglut=include("lib/eglut")
 waveform=include("lib/waveform")
 gridcontrol=include("lib/gridcontrol")
 pages=include("lib/pages")
+midi_helper=include("lib/midi_helper")
 
 -- what is this code doing here?????
 if not string.find(package.cpath,"/home/we/dust/code/graintopia/lib/") then
@@ -56,8 +67,27 @@ local enc_debouncing=false
 
 local record_live_duration = 10
 
+local num_voices = 4
+local num_scenes = 4
 local softcut_loop_start = 1
 local softcut_loop_end = 11--4
+
+voice1scene1_cc_channel = 1
+voice1scene2_cc_channel = 2
+voice1scene3_cc_channel = 3
+voice1scene4_cc_channel = 4
+voice2scene1_cc_channel = 5
+voice2scene2_cc_channel = 6
+voice2scene3_cc_channel = 7
+voice2scene4_cc_channel = 8
+voice3scene1_cc_channel = 9
+voice3scene2_cc_channel = 10
+voice3scene3_cc_channel = 11
+voice3scene4_cc_channel = 12 
+voice4scene1_cc_channel = 13 
+voice4scene2_cc_channel = 14
+voice4scene3_cc_channel = 15
+voice4scene4_cc_channel = 16
 
 waveforms = {}
 waveform_names = {}
@@ -65,6 +95,7 @@ waveform_sig_positions = {}
 composition_slice_positions = {}
 waveform_render_queue={}
 max_analysis_length = 60
+local waveform_active_play = {}
 -- local waveform_rendering=false
 
 local audio_path = _path.audio..norns.state.name.."/"
@@ -84,16 +115,16 @@ function show_waveform(waveform_name)
   end
 end
 
-function waveform_render_queue_add(waveform_name, waveform_path)
-  table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path})
+function waveform_render_queue_add(waveform_name, waveform_path,voice)
+  table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
   if #waveform_render_queue>0 then
     -- print("waveform_render_queue_add",waveform_name, waveform_path)
-    waveforms[waveform_name].load(waveform_path,max_analysis_length)
+    waveforms[waveform_name].load(voice,waveform_path,max_analysis_length)
   end
 end
 
 function render_softcut_buffer(buffer,winstart,winend,samples)
-  softcut.render_buffer(buffer, winstart, winend - winstart, 128)
+  softcut.render_buffer(buffer, winstart, winend - winstart, samples)
 end
 
 function on_waveform_render(ch, start, i, s)
@@ -109,7 +140,8 @@ function on_waveform_render(ch, start, i, s)
     if #waveform_render_queue>0 then
       local next_waveform_name=waveform_render_queue[1].name
       local next_waveform_path=waveform_render_queue[1].path
-      waveforms[next_waveform_name].load(next_waveform_path,max_analysis_length)
+      local next_waveform_voice=waveform_render_queue[1].voice
+      waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,max_analysis_length)
     else
     end
   end
@@ -134,11 +166,9 @@ local script_osc_event = osc.event
 
 function on_eglut_file_loaded(voice,file)
   print("on_eglut_file_loaded",voice, file)
-  if mode~="points generated" then
-    mode="granulated"
-  end
-  waveform_render_queue_add(voice.."gran-rec",file)  
-  waveforms[voice.."gran-rec"].load(file,max_analysis_length)  
+  waveform_render_queue_add(voice.."gran-rec",voice,file)  
+  local sample_length = params:get(voice.."sample_length")
+  waveforms[voice.."gran-rec"].load(file,sample_length/max_analysis_length)  
 end
 
 function set_eglut_sample(file,samplenum,scene)
@@ -152,11 +182,28 @@ function osc.event(path,args,from)
   if script_osc_event then script_osc_event(path,args,from) end
   
   if path == "/lua_eglut/grain_sig_pos" then
-    local voice=math.floor(args[1]+1)
-    table.remove(args,1)
-    -- tab.print(args)
-    waveform_sig_positions[voice.."granulated"]=args
-    screen_dirty = true
+    if inited then
+      local voice=math.floor(args[1]+1)
+      table.remove(args,1)
+      -- tab.print(args)
+      local active_voice = params:get("active_voice")
+      local active_scene = params:get("active_scene")
+      local active_mode = params:get(active_voice.."sample_mode")
+      local active_play = params:get(active_voice.."play"..active_scene)
+      -- print(voice==active_voice,voice,active_voice,active_scene,active_mode,active_play)
+      if voice == active_voice then
+        if active_mode > 1 and active_play > 1 then
+          waveform_active_play[voice] = true
+        else
+          waveform_active_play[voice] = false
+        end
+        waveform_sig_positions[voice.."granulated"]=args
+      else
+        waveform_active_play[voice] = false
+        waveform_sig_positions[voice.."granulated"] = nil
+      end
+      screen_dirty = true
+    end
   elseif path == "/lua_osc/sc_inited" then
     print("fcm 2d corpus sc inited message received")
   end
@@ -179,49 +226,69 @@ function setup_params()
   -- params:set_action("live_audio_dry_wet",function(x)
   --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_audio_dry_wet",{x})
   -- end)
+  params:add_separator("pages/voices/scenes")
+  params:add_number("active_page","active page",1,2,1)
+  params:set_action("active_page", function(x) 
+    local voice, scene, channel
+    if params:get("active_page") == 1 then 
+      voice = pages.p1ui.selected_voice
+      scene = pages.p1ui.selected_scene
+    elseif params:get("active_page") == 2 then 
+      voice = pages.p2ui.selected_voice
+      scene = pages.p2ui.selected_scene
+    end
+    channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
+    midi_helper.update_midi_devices(channel)
+  end)
+  params:add_number("active_voice","active voice",1,num_voices,1)
+  params:set_action("active_voice", function(x) 
+    pages.p1ui.selected_voice = x
+    pages.p2ui.selected_voice = x
+    local voice, scene, channel
+    if params:get("active_page") == 1 then 
+      voice = pages.p1ui.selected_voice
+      scene = pages.p1ui.prev_scenes[voice]
+    elseif params:get("active_page") == 2 then 
+      voice = pages.p2ui.selected_voice
+      scene = pages.p2ui.prev_scenes[voice]
+    end
+    params:set("active_scene",scene)
+    eglut:update_scene(voice,scene)
+    channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
+    midi_helper.update_midi_devices(channel)
+  end)
+  params:add_number("active_scene","active scene",1,num_scenes,1)
+  params:set_action("active_scene", function(x) 
+    pages.p1ui.selected_scene = x
+    pages.p2ui.selected_scene = x
+    pages.p1ui.prev_scenes[pages.p1ui.selected_voice] = x
+    pages.p2ui.prev_scenes[pages.p2ui.selected_voice] = x
+    local voice, scene, channel
+    if params:get("active_page") == 1 then 
+      voice = pages.p1ui.selected_voice
+      scene = pages.p1ui.selected_scene
+    elseif params:get("active_page") == 2 then 
+      voice = pages.p2ui.selected_voice
+      scene = pages.p2ui.selected_scene
+    end
+    params:set(voice.."scene",scene)
+    channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
+    midi_helper.update_midi_devices(channel)
+  end)
   params:add_separator("waveforms")
   params:add_option("show_waveform","show waveform",waveform_names)
-  params:set_action("show_waveform",function(x) 
-    print("show_waveform",x,waveform_names[x]) 
-    local waveform_name=waveform_names[x]
-    local is_gran_live = string.sub(waveform_name,-9)=="gran-live"
-  
-    if is_gran_live then
-      print("write_live_stream_enabled",1)
-      print("start_livebuffer_visualization")
-      -- softcut_reset_pos()
-      -- osc.send( { "localhost", 57120 }, "/sc_osc/write_live_stream_enabled",{1})  
-    else
-      print("write_live_stream_enabled",0)
-      -- osc.send( { "localhost", 57120 }, "/sc_osc/write_live_stream_enabled",{0})  
-    end
-    if waveforms[waveform_names[x]]:get_samples()==nil then
-      print("waveform not yet captured")
-    end  
-  end)
+  params:add_option("sync_waveform","sync waveform+ui",{"off","on"},2)
 end
   --------------------------
   --save/load params
   --------------------------
 
-function setup_params_post_eglut()
-  params:add_control("live_rec_level","live rec level",controlspec.new(0,1,"lin",0.01,1))
-  params:set_action("live_rec_level",function(value) 
-    softcut.rec_level(1,value);
-    osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{value})
-  end)
-  params:add_control("live_pre_level","live pre level",controlspec.new(0,1,"lin",0.01,0))
-  params:set_action("live_pre_level",function(value) 
-    softcut.pre_level(1,value)
-    osc.send( { "localhost", 57120 }, "/sc_eglut/live_pre_level",{value})
-  end)
-end
+
 
 ---------------------------------------------------
 -- reflection stuff start
 -- reflection code from @alanza (https://llllllll.co/t/low-pixel-piano/65705/2)
 ---------------------------------------------------
-local reflection = require 'reflection'
 local reflector_scene_labels={'i','ii','iii','iv'}
 eglut_params={}
 local max_reflectors_per_scene=8
@@ -277,7 +344,6 @@ function get_num_reflectors(voice,scene)
 end
 
 function init_reflector(p_id,voice,scene)
-  -- print("init reflector",p_id,voice,scene)
   reflectors[voice][scene][p_id]=reflection.new()
   reflectors[voice][scene][p_id].loop=0
   reflectors[voice][scene][p_id].process=function(event)
@@ -309,7 +375,7 @@ function init_reflector(p_id,voice,scene)
     -- print("reflector start callback",voice,scene,p_id)
   end
   reflectors[voice][scene][p_id].end_callback=function() 
-    print("reflector end callback",voice,scene,p_id)
+    -- print("reflector end callback",voice,scene,p_id)
     local recorder_ix=reflectors[voice][scene][p_id].recorder_ix
     local reflector_loop=params:get(voice.."-"..recorder_ix.."loop"..scene)
     if reflector_loop==1 then
@@ -325,8 +391,8 @@ function init_reflector(p_id,voice,scene)
     local rec_id=voice.."-"..recorder_ix.."record"..scene
     local reflector_tab = get_reflector_table(voice,scene,recorder_ix)    
     print("reflector end of rec callback",voice,scene,p_id,recorder_ix,rec_id,reflector_tab)
-    tab.print(reflector_tab)
-    reflector_tab:save(reflection_data_path .. rec_id)
+    -- tab.print(reflector_tab)
+    -- reflector_tab:save(reflection_data_path .. rec_id)
   end
 end
 
@@ -392,7 +458,6 @@ function sort_reflectors(voice,scene)
     --add reference to the recorder param index in the reflector table
     local reflector_tab=reflectors[voice][scene][param_id]
     reflector_tab.recorder_ix=reflector_ix
-    -- if voice==1 and scene==1 then print("reflector_tab.recorder_ix",reflector_tab.recorder_ix) end
 
     --update the recorder separator names
     local separator_id=voice.."-"..reflector_ix.."separator"..scene
@@ -408,7 +473,6 @@ function showhide_reflectors(selected_scene,selected_voice)
   for voice=voice_start,range do
     for scene=1,#reflector_scene_labels do
       local num_reflectors = get_num_reflectors(voice,scene)
-      if voice==1 and scene==1 then print(selected_scene,num_reflectors) end
       if scene==selected_scene and num_reflectors==0 then
         params:show(voice.."noreflectors_spacer"..scene)
         params:show(voice.."noreflectors"..scene)
@@ -427,7 +491,6 @@ function showhide_reflectors(selected_scene,selected_voice)
           params:show(reflector_record_id)
           local reflector_tab = get_reflector_table(voice,scene,reflector)
           local reflector_data = reflector_tab and reflector_tab.count or 0
-          -- if voice==1 and scene==1 then print("show/hide reflectors",reflector,reflector_data) end
           if reflector_data and reflector_data>0 then
             params:show(reflector_play_id)
             params:show(reflector_loop_id)
@@ -532,7 +595,6 @@ function init_reflectors()
       if prior_scene then
         for k,v in pairs(reflectors_selected_params[voice][prior_scene]) do
           local id=v.id
-          print(prior_scene,id)
           reflectors[voice][prior_scene][id]:stop()
         end
       end
@@ -586,7 +648,6 @@ function init_reflectors()
         params:add_option(play_id,"play",{"off","on"})
         params:set_action(play_id,function(value) 
           local reflector_tab = get_reflector_table(voice,scene,reflector)
-          print(get_reflector_table,voice,scene,reflector)
           if reflector_tab then
             if value==1 then
               reflector_tab:stop()
@@ -621,10 +682,8 @@ function init_reflectors()
         params:set_action(rec_option_id,function(state) 
           local param=voice..eglut_params[p_ix].id..scene
           if state==1 then
-            print("unenrich param",param)
             unenrich_param_reflector_actions(param,voice,scene)
           else
-            print("enrich param",param,p_ix)
             local num_reflectors=get_num_reflectors(voice,scene)
             if num_reflectors<max_reflectors_per_scene then
               enrich_param_reflector_actions(param,voice,scene)
@@ -641,6 +700,92 @@ function init_reflectors()
     end
   
   end
+
+  params:add_group("copy reflectors",6)
+  params:add_number("copy_reflectors_voice_from","copy from voice",1,num_voices,1)
+  params:add_option("copy_reflectors_scene_from","copy from scene",reflector_scene_labels,1)
+  params:add_number("copy_reflectors_voice_to","copy to voice",1,num_voices,1)
+  params:add_option("copy_reflectors_scene_to","copy to scene",reflector_scene_labels,1)
+  params:add_trigger("copy_reflectors_selected","copy selected")
+  params:set_action("copy_reflectors_selected",function() 
+    local voice_from=params:get("copy_reflectors_voice_from")
+    local scene_from=params:get("copy_reflectors_scene_from")
+    local voice_to=params:get("copy_reflectors_voice_to")
+    local scene_to=params:get("copy_reflectors_scene_to")
+    print("copy reflectors",voice_from,scene_from,voice_to,scene_to)
+    -- for i=1,#reflectors_param_list do
+    for p_ix=1,#eglut_params do
+      -- sync reflection data
+      -- local param_from=voice_from..eglut_params[p_ix].id..scene_from
+      -- local reflector_from = reflectors[voice_from][scene_from][param_from]
+      -- local param_to=voice_to..eglut_params[p_ix].id..scene_to
+      -- -- reflection.copy(reflectors[voice_from][scene_from][param_from],reflectors[voice_to][scene_to][param_to])
+      -- print(voice_from,scene_from, param_from,param_to,reflector_from,reflector_to)
+      -- if reflector_from then 
+      --   reflectors[voice_to][scene_to][param_to] = reflection.new()
+      --   local reflector_to = reflectors[voice_to][scene_to][param_to]
+      --   print(voice_from,scene_from, param_from,param_to,reflector_from,reflector_to)
+      --   reflection.copy(reflector_from,reflector_to) 
+      -- end
+
+      -- sync param values
+      local param_id=eglut_params[p_ix].id
+      local rec_option_id_from=voice_from.."rec_config"..param_id..scene_from
+      local rec_option_id_to=voice_to.."rec_config"..param_id..scene_to
+      local value_to_sync=params:get(rec_option_id_from)    
+      params:set(rec_option_id_to,value_to_sync)
+    end
+
+    -- for reflector=1,max_reflectors_per_scene do
+    --   local reflector_pdata = deep_copy(reflector_process_data[voice_from][scene_from][reflector])
+    --   reflector_process_data[voice_to][scene_to][reflector] = reflector_pdata
+
+    --   local rec_id_from=voice_from.."-"..reflector.."record"..scene_from
+    --   local rec_id_to=voice_to.."-"..reflector.."record"..scene_to
+    --   local loop_id_from=voice_from.."-"..reflector.."loop"..scene_from
+    --   local loop_id_to=voice_to.."-"..reflector.."loop"..scene_to
+    --   local play_id_from=voice_from.."-"..reflector.."play"..scene_from
+    --   local play_id_to=voice_to.."-"..reflector.."play"..scene_to
+    --   local rec_value_to_sync=params:get(rec_id_from)    
+    --   local loop_value_to_sync=params:get(loop_id_from)    
+    --   local play_value_to_sync=params:get(play_id_from) 
+    --   params:set(rec_id_to,rec_value_to_sync)
+    --   params:set(loop_id_to,loop_value_to_sync)
+    --   params:set(play_id_to,play_value_to_sync)
+    --   local loop = params:lookup_param(loop_id_to)
+    --   local play = params:lookup_param(play_id_to)
+    --   loop:bang()
+    --   play:bang()
+    --   print(rec_id_to,rec_value_to_sync)
+    --   print(loop_id_to,loop_value_to_sync)
+    --   print(play_id_to,play_value_to_sync)
+    --   print(">>>>>>>")
+    -- end
+
+  end)
+  
+  params:add_trigger("copy_reflectors_global","global copy from selected")
+  params:set_action("copy_reflectors_global",function() 
+    local voice_from=params:get("copy_reflectors_voice_from")
+    local scene_from=params:get("copy_reflectors_scene_from")
+    print("copy reflectors all",voice_from,scene_from)
+    -- for i=1,#reflectors_param_list do
+    for p_ix=1,#eglut_params do
+      -- sync param values
+      local param_id=eglut_params[p_ix].id
+      local rec_option_id_from=voice_from.."rec_config"..param_id..scene_from
+      local value_to_sync=params:get(rec_option_id_from)    
+      for voice=1,num_voices do
+        for scene=1,num_scenes do
+          if voice ~= voice_from or scene ~= scene_from then
+            local rec_option_id=voice.."rec_config"..param_id..scene
+            print("g: ",rec_option_id,value_to_sync)
+            params:set(rec_option_id,value_to_sync)
+          end
+        end
+      end
+    end
+  end)
   -- hide scenes 2-4 initially
   showhide_reflectors(1)
   showhide_reflector_configs(1)
@@ -677,32 +822,32 @@ function softcut_init()
   level = 1.0
   -- params:set("softcut_level",-inf)
     -- send audio input to softcut input
-	audio.level_adc_cut(1)  
+	audio.level_adc_cut(1)
   softcut.buffer_clear()
-  softcut.enable(1,1)
-  softcut.buffer(1,1)
-  softcut.level(1,1.0)
-  softcut.rate(1,1.0)
-  softcut.loop(1,1)
-  softcut.loop_start(1,softcut_loop_start)
-  local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
-  current_loop_end = loop_end
-  softcut.loop_end(1,loop_end) --voice,duration
-  softcut.position(1,1)
-  softcut.play(1,1)
+  for i=1,num_voices do
+    softcut.enable(i,1)
+    softcut.buffer(i,1)
+    softcut.level(i,1.0)
+    softcut.rate(i,1.0)
+    softcut.loop(i,1)
+    softcut.loop_start(i,softcut_loop_start)
+    local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
+    current_loop_end = loop_end
+    softcut.loop_end(i,loop_end) --voice,duration
+    softcut.position(i,1)
+    softcut.play(i,1)
 
-  -- set input rec level: input channel, voice, level
-  softcut.level_input_cut(1,1,1.0)
-  softcut.level_input_cut(2,1,1.0)
-  -- set voice 1 record level 
-  softcut.rec_level(1,rec)
-  -- softcut.rec_level(1,0);softcut.pre_level(1,1)
-  softcut.rec_level(1,1);softcut.pre_level(1,0)
-  -- set voice 1 pre level
-  softcut.pre_level(1,pre)
-  -- set record state of voice 1 to 1
-  softcut.rec(1,1)
+    -- set input rec level: input channel, voice, level
+    softcut.level_input_cut(1,i,1.0)
+    softcut.level_input_cut(2,i,1.0)
 
+    -- set voice record level 
+    softcut.rec_level(i,1);
+    -- set voice pre level
+    softcut.pre_level(i,0)
+    -- set record state of voice 1 to 1
+    softcut.rec(i,1)
+  end
   softcut.event_render(on_waveform_render)
 
 end
@@ -730,12 +875,14 @@ function init()
   end
   setup_waveforms()
   setup_params()
-  eglut:init(live_buffer_length,on_eglut_file_loaded)
+  eglut:init(on_eglut_file_loaded, num_voices, num_scenes)
   eglut:setup_params()
+  midi_helper:init(num_voices,num_scenes)
+
+  params:bang()
+
   -- eglut:init_lattice()
-  setup_params_post_eglut()
   init_reflectors()
-  
   gridcontrol:init()
   print("eglut inited and params setup")
   -- params:set("1play1",2)
@@ -744,12 +891,21 @@ function init()
   softcut_init()
   
   redrawtimer = metro.init(function() 
+    local active_voice, scene = pages:get_selected_ui_elements()
+    --check to keep active scene in sync with selected scene of active voice
+    if scene ~= params:get(active_voice.."scene") then
+      scene = params:get(active_voice.."scene")
+      params:set("active_scene",scene)
+    end
+    
     if (norns.menu.status() == false and fileselect.done~=false) then
       if screen_dirty == true then redraw() end
-      local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
-      -- softcut.loop_end(1,loop_end) --voice,duration
+      local loop_end = params:get(active_voice  .. "sample_length") + 1
       if current_loop_end ~= loop_end then 
-        softcut_init()
+        -- softcut_init()
+        softcut.loop_start(active_voice,softcut_loop_start)
+        softcut.loop_end(active_voice,loop_end) --voice,duration
+        current_loop_end = loop_end
       end
       render_softcut_buffer(1,1,loop_end,128)
     end
@@ -768,7 +924,6 @@ function init()
         local reflector_tab = get_reflector_table(voice,scene,reflector)
         local rec_id=voice.."-"..reflector.."record"..scene
         if reflector_tab then
-          print("load reflector",reflection_data_path .. rec_id)
           reflector_tab:load(reflection_data_path .. rec_id)
         end
         showhide_reflectors(scene,voice)
@@ -778,16 +933,17 @@ function init()
 
   inited=true
   --todo: figure out why we need to flip rec_scene to get params to show...something to do with show_hide loop at the start?
-  params:set('rec_scene1',2)
-  params:set('rec_scene1',1)
-  params:set("1sample_mode",2)
-  params:set("1play1",2)
+  -- params:set('rec_scene1',2)
+  -- params:set('rec_scene1',1)
+  -- params:set("1sample_mode",2)
+  -- params:set("1play1",2)
 
   for i=1,eglut.num_voices do
     for j=1,eglut.num_scenes do
       params:set(i.."ptr_delay"..j,0.01)
     end
   end
+  print("init done...starting active_voice/active_scene",active_voice,active_scene)
 end
 
 function key(k,z)  
@@ -807,14 +963,7 @@ function key(k,z)
 end
 
 function enc(n,d)
-  if n==1 then
-    pages.active_page=util.clamp(d+pages.active_page,1,2)
-  end
-  if pages.active_page==1 then
-    pages:enc(n,d)
-  elseif pages.active_page==2 then
-    pages:enc(n,d)
-  end
+  pages:enc(n,d)
   screen_dirty = true
 end
 -------------------------------
@@ -834,8 +983,7 @@ function redraw()
 
 
   screen.clear()
-
-  pages:redraw(pages.active_page)
+  pages:redraw(params:get("active_page"),waveform_active_play)
 
   -- screen.peek(0, 0, 127, 64)
   screen.stroke()
