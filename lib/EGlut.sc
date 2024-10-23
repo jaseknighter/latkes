@@ -1,5 +1,4 @@
 //EGlut: grandchild of Glut, parent of ZGlut
-//mostly, this adds grain envelopes to the ZGlut engine
 
 EGlut {
   classvar ngvoices = 4;
@@ -8,8 +7,7 @@ EGlut {
   var context;
   var pg;
 	var effect;
-  var grain_modes; //grain_mode 0=live grain_mode; 1=file grain_mode
-	var <live_buffers;
+  var <live_buffers;
 	var <file_buffers;
 	var <gvoices;
 	var effectBus;
@@ -20,12 +18,11 @@ EGlut {
   var updating_gr_envbufs = false;
   var prev_sig_pos1=0, prev_sig_pos2=0, prev_sig_pos3=0, prev_sig_pos4=0;
 
-	// var <seek_tasks;
   var osc_funcs;
   var recorders;
   var live_streamer;
-  // var live_buffer;
   var buffer_length = 120;
+  var max_size = 5;
     
 
 	*new {
@@ -34,36 +31,14 @@ EGlut {
 
 	}
 
-	setGrainMode { arg voice,mode;
-    grain_modes[voice]=mode;
-  }
-
 	// read from an existing buffer into the granulation buffsers
 	setBufStartEnd { arg i, buf, mode,sample_duration;
-    // ["setBufStartEnd set voices and live_buffers",i,buf,live_buffers, mode].postln;
-    // if(live_buffers[i].sampleRate!=nil, {
-    //   live_buffers[i].zero;
-    //   live_buffers[i+ngvoices].zero;
-    // });
-
-    if (mode.notNil,{
-      this.setGrainMode(mode);
-    });
-    // duplicate GrainBuf for stereo granulation
-    // gvoices[i].set(\buf, buf);
-    // gvoices[i+ngvoices].set(\buf2, buf);
     gvoices[i].set(\buf_pos_end, sample_duration/buffer_length);
-    // live_buffers[i+ngvoices] = buf;
-
-    
-    // ["setBufStartEnd done i,modem,sample_duration,buffer_length",i,mode,sample_duration,buffer_length].postln;
 	}
 
   // disk read
 	readDisk { arg i, path, sample_duration;
     var startframe = 0;
-		// if(file_buffers[i].notNil, {
-    grain_modes[i]=1;
     if (File.exists(path), {
       // load stereo files and duplicate GrainBuf for stereo granulation
       var newbuf,newbuf2;
@@ -73,7 +48,6 @@ EGlut {
       numChannels = soundfile.numChannels;
       soundfile.close;
       ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_duration].postln;
-      // file_buffers[i].allocReadChannelMsg(context.server, path, channels:[0], completionMessage:{
        newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
         arg buf;
         file_buffers[i].free;
@@ -104,7 +78,6 @@ EGlut {
         ["newbuf2",i,file_buffers[i+ngvoices]].postln;
       });
     });
-		// });
 	}
 
 
@@ -126,10 +99,6 @@ EGlut {
     context = engContext;
     thisEngine = eng;
     
-    grain_modes = Array.fill(ngvoices, { arg i;
-      1;
-    });
-
     live_buffers = Array.fill(ngvoices*2, { arg i;
       Buffer.alloc(
         s,
@@ -184,16 +153,16 @@ EGlut {
       buf_pos_end=1, 
       sample_duration=10/buffer_length,
       speed=1, jitter=0, spread_sig=0, voice_pan=0,	
-      size=0.1, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
+      size=0.1, size_jitter=0, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
       t_reset_pos=0, cutoff=20000, q, send=0, 
       ptr_delay=0.2,sync_to_rec_head=1,
-      // mode=0, 
       subharmonics=0,overtones=0, gr_envbuf = -1,
       spread_sig_offset1=0, spread_sig_offset2=0, spread_sig_offset3=0;
 
       var grain_trig=1;
       var grain_jitter_trig=1;
       var trig_rnd;
+      var size_jitter_sig;
       var density_jitter_sig;
       var jitter_sig, jitter_sig2, jitter_sig3, jitter_sig4;
       var sig_pos;
@@ -203,14 +172,12 @@ EGlut {
       var buf_dur;
       var pan_sig;
       var pan_sig2;
-
       var env;
       var level=1;
       var grain_env;
       var main_vol=1.0/(1.0+subharmonics+overtones);
       var subharmonic_vol=subharmonics/(1.0+subharmonics+overtones);
       var overtone_vol=overtones/(1.0+subharmonics+overtones);
-      // var maxgraindur=ptr_delay/speed.abs;
       var ptr;
       var reset_pos=1;
       var sig,sig2;
@@ -222,12 +189,25 @@ EGlut {
       
       pos = pos * buf_pos_end;
 
+      size_jitter_sig = TRand.kr(trig: Impulse.kr(density),
+        lo: size_jitter.neg,
+        hi: size_jitter);
+
+      // make sure size+size jitter is greater than 0, otherwise ignore the jitter
+      size = ((size+size_jitter_sig > 0) * (size+size_jitter_sig)) + ((1-(size+size_jitter_sig > 0)) * size);
+      size = ((size+size_jitter_sig < max_size) * (size+size_jitter_sig)) + ((1-(size+size_jitter_sig < max_size)) * size);
+      size = Lag.kr(size);
+
+
+
       density_jitter_sig = TRand.kr(trig: Impulse.kr(density),
         lo: density_jitter.neg,
         hi: density_jitter);
+
       density = Lag.kr(density+density_jitter_sig);
+
       spread_pan = Lag.kr(spread_pan);
-      // size = Lag.kr(min(size,maxgraindur));
+
       cutoff = Lag.kr(cutoff);
       q = Lag.kr(q);
       send = Lag.kr(send);
@@ -268,8 +248,6 @@ EGlut {
       // modulate the start/stop
   		phasor_start = buf_pos_start+((size)/buffer_length);
   		phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end-(size/buffer_length));
-      // phasor_start = buf_pos_start + 0.001;
-      // phasor_end = buf_pos_end - 0.001;
 
   		// LocalIn collects a trigger whenever the playheads leave the buffer window.
     	localin = LocalIn.kr(1);
@@ -729,7 +707,6 @@ EGlut {
       LocalOut.kr(out_of_window);
 
       // crossfade bewteen the two sounds over 50 milliseconds
-      // ([sig[0],sig[1]]).poll;
       sig=SelectX.ar(Lag.kr(Changed.kr(switch),0.01),[sig,sig2]);
 
       
@@ -808,14 +785,11 @@ EGlut {
       var voice = msg[1] - 1;
       var lvl, pos;
       
-      // seek_tasks[voice].stop;
-
       // TODO: async get
       lvl = levels[voice].getSynchronous();
 
       pos = msg[2];
       gvoices[voice].set(\pos, pos);
-      // gvoices[voice].set(\t_reset_pos, 1 + 110/buffer_length);
       gvoices[voice].set(\t_reset_pos, 1);
       gvoices[voice].set(\sync_to_rec_head, 0);
     });
@@ -867,6 +841,11 @@ EGlut {
       gvoices[voice].set(\size, msg[2]);
     });
 
+    thisEngine.addCommand("size_jitter", "if", { arg msg;
+      var voice = msg[1] - 1;
+      gvoices[voice].set(\size_jitter, msg[2]);
+    });
+
     thisEngine.addCommand("density", "if", { arg msg;
       var voice = msg[1] - 1;
       gvoices[voice].set(\density, msg[2]);
@@ -911,7 +890,6 @@ EGlut {
       var winenv = Env(
         [0, attack_level, 0], 
         [attack_time, decay_time], 
-        // [attack_shape, curve_types[decay_shape].asSymbol]
         [attack_curve_types[attack_shape].asSymbol, decay_curve_types[decay_shape].asSymbol]
       );
 
@@ -926,22 +904,8 @@ EGlut {
             updating_gr_envbufs = false;
             oldbuf.free;
           }).play;
-          // oldbuf.free;
         });
       })
-      // if (updating_gr_envbufs == false,{
-      //   updating_gr_envbufs = true;
-      //   oldbuf = gr_envbufs[voice];
-      //   gr_envbufs[voice] = Buffer.sendCollection(s, winenv.discretize, 1);
-      //   Routine({
-      //     0.1.wait;
-      //     gvoices[voice].set(\gr_envbuf, gr_envbufs[voice]);
-      //     1.wait;
-      //     updating_gr_envbufs = false;
-      //     oldbuf.free;
-      //   }).play;
-      // })
-      
     });
 
     thisEngine.addCommand("envscale", "if", { arg msg;
@@ -1013,12 +977,9 @@ EGlut {
         var sample_duration=msg[2];
         var phase=rec_phase.getSynchronous();
 
-        // ["phase",phase].postln;
-        [voice,voice+ngvoices,recorders].postln;
         recorders[voice].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);
         recorders[voice + ngvoices].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);
-        (["recorders: ",recorders[voice],recorders[voice + ngvoices]]).postln;
-        // lua_sender.sendMsg("/lua_osc/on_granulate_live",1);
+        // (["recorders: ",recorders[voice],recorders[voice + ngvoices]]).postln;
         this.setBufStartEnd(voice,live_buffers[voice],2,sample_duration);
       },"/sc_osc/granulate_live");
     );   

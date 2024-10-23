@@ -18,7 +18,7 @@ function pages:init(args)
   self.p1ui.selected_voice=1
   self.p1ui.selected_scene=1
   self.p1ui.prev_scenes = {1,1,1,1}
-  self.p1ui.ui_areas = {"mode","voice","scene"}
+  self.p1ui.ui_areas = {"mode","voice","scene","sample_length"}
   self.p1ui.num_ui_areas=#self.p1ui.ui_areas
   self.p1ui.selected_ui_area=self.p1ui.ui_areas[self.p1ui.selected_ui_area_ix]      
   
@@ -38,7 +38,7 @@ function pages:init(args)
       table.insert(self.p2ui.ui_areas,"reflectorbutton"..i.."-"..j)
     end
   end
-  self.p2ui.num_ui_areas=#self.p1ui.ui_areas+(self.max_reflectors_per_scene*4)
+  self.p2ui.num_ui_areas=#self.p1ui.ui_areas+(self.max_reflectors_per_scene*4)-1
   self.p2ui.selected_ui_area=self.p2ui.ui_areas[self.p2ui.selected_ui_area_ix]      
 
 end
@@ -129,12 +129,12 @@ end
 
 function pages:set_selected_ui_area(ix)
   local active_page = params:get("active_page")
-  if active_page==1 then
+  if active_page==1 and self.p1ui.ui_areas[ix] then
     self.p1ui.selected_ui_area_ix=ix
     self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
     self.p2ui.selected_ui_area_ix=ix
     self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
-  elseif active_page==2 then
+  elseif active_page==2 and self.p2ui.ui_areas[ix] then
     self.p2ui.selected_ui_area_ix=ix
     self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
   end
@@ -187,6 +187,9 @@ function pages:enc(n,d)
         params:set("rec_scene"..voice,selected_scene)
         self.p1ui.selected_scene = selected_scene
         params:set("active_scene",self.p1ui.selected_scene)
+      elseif self.p1ui.selected_ui_area=="sample_length" then
+        voice = self.p1ui.selected_voice
+        params:delta(voice.."sample_length",d)
       end
     end
   elseif active_page==2 then
@@ -209,8 +212,18 @@ function pages:enc(n,d)
 
     elseif n==2 then
       local ix=util.clamp(self.p2ui.selected_ui_area_ix+d,1,self.p2ui.num_ui_areas)
-      self:set_selected_ui_area(ix)
+
+      --start hacky code to skip over reflector buttons when they are invisible
       local ui_area_type = self:get_active_ui_area_type()
+      if d > 0 and ui_area_type == "reflectorbutton" then
+        local voice, scene, reflector = self:get_selected_ui_elements()
+        local loop_visible = params:visible(voice.."-"..pages:get_active_reflector().."loop"..scene)
+        if loop_visible == false then ix = ix +2 end
+      end
+      
+      self:set_selected_ui_area(ix)
+      ui_area_type = self:get_active_ui_area_type()
+      -- print("ui_area_type,self:get_selected_ui_elements()",ui_area_type,self:get_selected_ui_elements())
       if ui_area_type == "reflectorbutton" then
         local reflector_button = self:get_active_reflector_button()
         self.p2ui.selected_reflector_button = reflector_button
@@ -232,9 +245,8 @@ function pages:enc(n,d)
       elseif ui_area_type == "reflector" then
         local reflector = self:get_active_reflector()
         self.p2ui.selected_reflector = reflector
-        local reflector = self:get_active_reflector()
-        self.p2ui.selected_reflector = reflector
         self.p2ui.selected_reflector_button = nil
+        print("reflector",self.p2ui.selected_reflector)
       else
         self.p2ui.selected_reflector = nil
         self.p2ui.selected_reflector_button = nil
@@ -281,10 +293,12 @@ function pages:enc(n,d)
         local scene = self.p2ui.selected_scene
         local reflector = self.p2ui.selected_reflector
         local reflector_record_id=voice.."-"..reflector.."record"..scene
-        if params:visible(reflector_record_id) == true then
+        -- print("visible",reflector_record_id,params:visible(reflector_record_id))
+        -- if params:visible(reflector_record_id) == true then
           local reflector_id=reflectors_selected_params[voice][scene][reflector].id
+          print("update reflector", voice, scene, reflector,reflector_id)
           params:delta(reflector_id,d)
-        end
+        -- end
 
       end
     end
@@ -376,9 +390,9 @@ function pages:redraw(page_num, show_sig_positions)
     screen.level(10)  
     screen.move(self.composition_left,self.composition_bottom+7)
     screen.line_rel(self.composition_right-self.composition_left,0)
-    screen.level(15)  
+    screen.level(self.p1ui.selected_ui_area_ix==4 and 15 or 5)  
     -- local sample_used = params:get(self.p1ui.selected_voice.."sample_length")/
-    local sample_length = (params:get(voice.."sample_length"))/live_buffer_length
+    local sample_length = (params:get(voice.."sample_length"))/max_live_buffer_length
     screen.rect(self.composition_left,self.composition_bottom+5,(self.composition_right-self.composition_left)*sample_length,4)
 
   elseif page_num == 2 then

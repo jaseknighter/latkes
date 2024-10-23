@@ -17,7 +17,9 @@ e.param_list={
   "grain_params",
   "play",
   "volume","send","ptr_delay","speed","seek",
-  "size","density","density_beat_divisor","density_jitter","density_jitter_mult",
+  "size",
+  -- "size_jitter","size_jitter_mult",
+  "density","density_beat_divisor","density_jitter","density_jitter_mult",
   "pitch","spread_sig",
   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
   "jitter",
@@ -164,10 +166,12 @@ function e:init_lattice()
 end
 
 
-function e:init(sample_selected_callback, num_voices, num_scenes)
+function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer_length,max_live_buffer_length)
   self.sample_selected_callback = sample_selected_callback
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
+  self.min_live_buffer_length = min_live_buffer_length or 0.1
+  self.max_live_buffer_length = max_live_buffer_length or 120
   
 end
 
@@ -279,7 +283,7 @@ function e:setup_params()
       scene=scene and scene or 1
       e:update_scene(i,scene)
     end)
-    params:add_control(i.."sample_length","sample length",controlspec.new(1,120.0,"exp",0.1,10,"s",0.1/120))
+    params:add_control(i.."sample_length","sample length",controlspec.new(1,self.max_live_buffer_length,"exp",0.1,10,"s",0.1/self.max_live_buffer_length))
     params:set_action(i.."sample_length",function()
       if params:get(i.."sample_mode") == 2 then
         self:granulate_live(i)
@@ -333,10 +337,6 @@ function e:setup_params()
   
     params:add_separator(i.."grain_params","param values")
     for scene=1,e.num_scenes do
-
-      
-
-
       params:add_option(i.."play"..scene,"play",{"off","on"},1)
       params:set_action(i.."play"..scene,function(x) 
         if params:get(i.."sample_mode") > 1 then
@@ -392,8 +392,28 @@ function e:setup_params()
       -- params:add_control(i.."size"..scene,"size",controlspec.new(0.1,15,"exp",0.01,1,"",0.01/1))
       params:add_control(i.."size"..scene,"size",controlspec.new(0.1,5,"exp",0.01,1,"",0.01/1))
       params:set_action(i.."size"..scene,function(value)
-        engine.size(i,util.clamp(value*clock.get_beat_sec()/10,0.001,util.linlin(1,40,1,0.1,params:get(i.."density"..scene))))
+        local function callback_func()
+          engine.size(i,util.clamp(value*clock.get_beat_sec()/10,0.001,util.linlin(1,40,1,0.1,params:get(i.."density"..scene))))
+        end
+        clock.run(enc_debouncer,callback_func,0.2)
       end)
+
+      -- params:add_control(i.."size_jitter"..scene,"size jitter",controlspec.new(0,1,"lin",0.1,0,"",1/100))
+      -- params:set_action(i.."size_jitter"..scene,function(value) 
+      --   local function callback_func()
+      --     engine.size_jitter(i,(value*params:get(i.."size_jitter_mult"..scene))*clock.get_beat_sec()/10) 
+      --   end
+      --   clock.run(enc_debouncer,callback_func,0.2)
+      -- end)
+      -- params:add_control(i.."size_jitter_mult"..scene,"size jitter mult",controlspec.new(1,5,"lin",1,1,"",1/10))
+      -- params:set_action(i.."size_jitter_mult"..scene,function(value) 
+      --   local function callback_func()
+      --     engine.size_jitter(i,(value*params:get(i.."size_jitter"..scene))*clock.get_beat_sec()/10) 
+      --   end
+      --   clock.run(enc_debouncer,callback_func,0.2)
+      -- end)
+
+
       params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",1,4,"/beat",1/40))
       params:set_action(i.."density"..scene,function(value) engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) end)
       params:add_control(i.."density_beat_divisor"..scene,"density beat div",controlspec.new(1,16,'lin',1,4,"",1/16))
@@ -484,8 +504,17 @@ function e:setup_params()
     end
   end
 
-  params:add_group("echo",(8*e.num_scenes)+1)
-  params:add_option("echoscene","scene",e.scene_labels,1)
+  params:add_control("global_send","global echo send",controlspec.new(0.0,1.0,"lin",0.01,1))
+  params:set_action("global_send",function(value) 
+    for voice=1,e.num_voices do
+      for scene=1,e.num_scenes do
+        params:set(voice.."send"..scene,value)
+      end
+    end
+  end)
+
+  params:add_group("echo",(8*e.num_scenes)+2)
+  params:add_option("echoscene","echo scene",e.scene_labels,1)
   params:set_action("echoscene",function(scene)
     for _,param_name in ipairs(e.param_list_echo) do
       for i=1,e.num_scenes do

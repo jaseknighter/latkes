@@ -45,7 +45,7 @@ function Waveform:display_sigs_pos(sigs_pos, highlight_sig_positions)
   --show signal position(s)
   if #sigs_pos > 0 then
     -- if highlight_sig_positions == true then print("highlight_sig_positions",highlight_sig_positions) end
-    if highlight_sig_positions == true then screen.level(1) else screen.level(10) end
+    if highlight_sig_positions == true then screen.level(15) else screen.level(1) end
     -- screen.level(15)
     screen.blend_mode(blend_mode or 11)   
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)

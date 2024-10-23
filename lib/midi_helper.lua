@@ -41,7 +41,7 @@ local channel_vals_16n = {}
 local function send_16n_sysex(m,d) 
   m.send(device_16n,{0xf0})
   for i,v in ipairs(d) do
-    print("send 16n sysex", i,d[i])
+    -- print("send 16n sysex", i,d[i])
     m.send(device_16n,{d[i]})
   end
   m.send(device_16n,{0xf7})
@@ -53,7 +53,7 @@ local function update16n(channel_vals_16n,cc_vals_16n,skip_exclusions)
   for i=1,16,1
   do
     local exclusion = params:get("midi_control_exclusion"..i)
-    if exclusion == 1 or skip_exclusions == true then
+    if exclusion == 1 or skip_exclusions == false then
       local hex_val = "0x"..string.format("%x",channel_vals_16n[i])
       table.insert(data_table,hex_val)
     else
@@ -66,7 +66,7 @@ local function update16n(channel_vals_16n,cc_vals_16n,skip_exclusions)
   for i=1,16,1
   do
     local hex_val = "0x"..string.format("%x",cc_vals_16n[i])
-    print("cc val",i,hex_val,cc_vals_16n[i])
+    -- print("cc val",i,hex_val,cc_vals_16n[i])
     table.insert(data_table,hex_val)
   end
   send_16n_sysex(midi, data_table)
@@ -97,7 +97,7 @@ end
 -- midi handler functions
 -------------------------------
 local midi_event = function(data) 
-  tab.print(data)
+  -- tab.print(data)
   local msg = midi.to_msg(data)
   if msg.type == "stop" or msg.type == "start" then
     print("stopping/starting:", msg.type)
@@ -160,8 +160,9 @@ function midi_helper:init(num_voices,num_scenes)
   params:add_group("midi control exclusions", 17)
   params:add{
     type = "number", id = "exclusion_cc_channel", name = "exclusion cc channel",
-    min = 1, max = 16, default = default_val, action = function(value) 
+    min = 1, max = 16, default = 1, action = function(value) 
   end }
+
   for control = 1, 16 do
     params:add_option("midi_control_exclusion"..control,"control"..control.." exclusion",{"off","on"},1)
   end

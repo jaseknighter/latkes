@@ -1,4 +1,4 @@
--- flucoma 2d corpus explorer
+-- futures past
 --
 -- llllllll.co/t/futurespast
 --
@@ -9,16 +9,15 @@
 -- instructions
 
 ----------------------------
+-- documentation:
+-- be careful when setting different filter cutoff and rq between scenes or popping can occur when switching, esp. if rq is set low
+-- 
 -- bugs/improvement ideas:
--- cleanup Engine_FuturesPast.sc
+-- fix remaining pops and clicks (so size jitter params can be enabled)
+-- !!!!! changing active scene in a voice affects all voices
+-- !!!!! param hiding broken when selecting voice 4
+-- allow setting start position of each voice
 -- why doesn't changing attack level make changes immediately, but requires a pause and addition value change to take effect?
--- changing scene in a voice affects all voices
--- fix panning for effects (greyhole)
--- fix recording length (see max_analysis_length. why is it 60 and not 120) 
--- buffer updates
---    make one live buffer per voice
---    allow rec/pre levels to be set per scene
--- add a filterbank
 -- what is max_analysis_length for?
 -- page 2
 --   add labels for sample mode, voice, scene
@@ -102,7 +101,8 @@ local audio_path = _path.audio..norns.state.name.."/"
 local data_path=_path.data..norns.state.name.."/"
 local reflection_data_path=data_path.."reflectors/"
 
-live_buffer_length = 120
+mmin_live_buffer_length = 120
+max_live_buffer_length = 120
 
 --------------------------
 -- waveform rendering
@@ -238,7 +238,7 @@ function setup_params()
       scene = pages.p2ui.selected_scene
     end
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
-    midi_helper.update_midi_devices(channel)
+    midi_helper.update_midi_devices(channel,true)
   end)
   params:add_number("active_voice","active voice",1,num_voices,1)
   params:set_action("active_voice", function(x) 
@@ -255,7 +255,7 @@ function setup_params()
     params:set("active_scene",scene)
     eglut:update_scene(voice,scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
-    midi_helper.update_midi_devices(channel)
+    midi_helper.update_midi_devices(channel,true)
   end)
   params:add_number("active_scene","active scene",1,num_scenes,1)
   params:set_action("active_scene", function(x) 
@@ -273,7 +273,7 @@ function setup_params()
     end
     params:set(voice.."scene",scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
-    midi_helper.update_midi_devices(channel)
+    midi_helper.update_midi_devices(channel,true)
   end)
   params:add_separator("waveforms")
   params:add_option("show_waveform","show waveform",waveform_names)
@@ -563,8 +563,9 @@ function init_reflectors()
 
   reflectors_param_list={
     "play","volume","ptr_delay","speed","seek",
-    -- "pos",
-    "size","density","density_beat_divisor","density_jitter","density_jitter_mult",
+    "size",
+    -- "size_jitter","size_jitter_mult",
+    "density","density_beat_divisor","density_jitter","density_jitter_mult",
     "pitch","spread_sig",
     "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
     "jitter",
@@ -588,7 +589,7 @@ function init_reflectors()
   params:add_option("reflector_autoplay","auto play",{"off","on"},2)
   -- setup reflectors
   for voice=1,eglut.num_voices do
-    params:add_group("gran_voice"..voice.."-rec","voice"..voice.."-rec",3+(#reflector_scene_labels*(max_reflectors_per_scene*4)))
+    params:add_group("gran_voice"..voice.."-rec","voice"..voice.."-rec",1+((#reflector_scene_labels)*(max_reflectors_per_scene*4)))
     params:add_option("rec_scene"..voice,"scene",reflector_scene_labels,1)
     params:set_action("rec_scene"..voice,function(scene) 
       local prior_scene=reflectors_selected_params[voice].prior_scene
@@ -619,13 +620,15 @@ function init_reflectors()
           local reflector_tab = get_reflector_table(voice,scene,reflector)
           if reflector_tab == nil then return
           elseif value==2 then
-            print("start reflector",rec_id)
+            print("start reflector recording",rec_id)
             reflector_tab:clear()
+            params:set(voice.."-"..reflector.."loop"..scene,1)
+            params:set(voice.."-"..reflector.."play"..scene,1)
             reflector_tab:set_rec(1)
             if params:get("reflector_autoloop") == 2 then params:set(voice.."-"..reflector.."loop"..scene,2) end
             if params:get("reflector_autoplay") == 2 then params:set(voice.."-"..reflector.."play"..scene,2) end      
           else
-            print("stop reflector",rec_id,voice,scene,reflector)
+            print("stop reflector recording",rec_id,voice,scene,reflector)
             reflector_tab:set_rec(0)
           end
           showhide_reflectors(scene,voice)
@@ -796,7 +799,7 @@ end
 ---------------------------------------------------
 
 function enc_debouncer(callback,debounce_time)
-  if debounce_time then print("deb",debounce_time) end
+  -- if debounce_time then print("deb",debounce_time) end
   debounce_time = debounce_time or 0.1
   if enc_debouncing == false then
     enc_debouncing = true
@@ -875,7 +878,7 @@ function init()
   end
   setup_waveforms()
   setup_params()
-  eglut:init(on_eglut_file_loaded, num_voices, num_scenes)
+  eglut:init(on_eglut_file_loaded, num_voices, num_scenes,min_live_buffer_length, max_live_buffer_length)
   eglut:setup_params()
   midi_helper:init(num_voices,num_scenes)
 
@@ -931,12 +934,21 @@ function init()
     end
   end
 
-  inited=true
+  if device_16n then midi_helper.update_midi_devices(1,true) end
+
   --todo: figure out why we need to flip rec_scene to get params to show...something to do with show_hide loop at the start?
-  -- params:set('rec_scene1',2)
-  -- params:set('rec_scene1',1)
+  params:set('rec_scene1',2)
+  params:set('rec_scene1',1)
+  params:set('rec_scene2',2)
+  params:set('rec_scene2',1)
+  params:set('rec_scene3',2)
+  params:set('rec_scene3',1)
+  params:set('rec_scene4',2)
+  params:set('rec_scene4',1)
   -- params:set("1sample_mode",2)
   -- params:set("1play1",2)
+
+  inited=true
 
   for i=1,eglut.num_voices do
     for j=1,eglut.num_scenes do
