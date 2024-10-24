@@ -168,7 +168,7 @@ function on_eglut_file_loaded(voice,file)
   print("on_eglut_file_loaded",voice, file)
   waveform_render_queue_add(voice.."gran-rec",voice,file)  
   local sample_length = params:get(voice.."sample_length")
-  waveforms[voice.."gran-rec"].load(file,sample_length/max_analysis_length)  
+  waveforms[voice.."gran-rec"].load(voice,file,sample_length/max_analysis_length)  
 end
 
 function set_eglut_sample(file,samplenum,scene)
@@ -204,6 +204,13 @@ function osc.event(path,args,from)
       end
       screen_dirty = true
     end
+  elseif path == "/lua_eglut/set_sample_duration" then
+    local voice = args[1]+1
+    local duration = args[2]
+    local file = args[3]
+    print("update sample duration", voice, duration)
+    params:set(voice.."sample_length", duration)
+    on_eglut_file_loaded(voice,file)
   elseif path == "/lua_osc/sc_inited" then
     print("fcm 2d corpus sc inited message received")
   end

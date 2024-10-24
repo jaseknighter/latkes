@@ -18,6 +18,9 @@ EGlut {
   var updating_gr_envbufs = false;
   var prev_sig_pos1=0, prev_sig_pos2=0, prev_sig_pos3=0, prev_sig_pos4=0;
 
+  var lua_sender;
+  var sc_sender;
+
   var osc_funcs;
   var recorders;
   var live_streamer;
@@ -37,45 +40,53 @@ EGlut {
 	}
 
   // disk read
-	readDisk { arg i, path, sample_duration;
+	readDisk { arg voice, path, sample_duration;
     var startframe = 0;
     if (File.exists(path), {
       // load stereo files and duplicate GrainBuf for stereo granulation
       var newbuf,newbuf2;
-      var file, numChannels;
+      var file, numChannels, duration;
       var soundfile = SoundFile.new;
       soundfile.openRead(path.asString.standardizePath);
       numChannels = soundfile.numChannels;
+      duration = soundfile.duration;
       soundfile.close;
-      ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_duration].postln;
+      ["file read into buffer...duration,sample_duration",duration,sample_duration].postln;
+      if (duration < sample_duration,{
+        sample_duration = duration;
+        (["reduce sample duration to match file duration",duration,sample_duration]).postln;
+        lua_sender.sendMsg("/lua_eglut/set_sample_duration",voice,sample_duration,path);
+      });
+      // ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_duration].postln;
        newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
         arg buf;
-        file_buffers[i].free;
-        file_buffers[i] = buf;
-        gvoices[i].set(\buf, file_buffers[i]);
-        gvoices[i].set(\buf_pos_end, sample_duration/buffer_length);
+        file_buffers[voice].free;
+        file_buffers[voice] = buf;
+        gvoices[voice].set(\buf, file_buffers[voice]);
+        gvoices[voice].set(\buf_pos_end, sample_duration/buffer_length);
 
-        ["newbuf",i,file_buffers[i]].postln;
-      });
-      if (numChannels > 1,{
-        "stereo file: read 2nd channel into buffer's 2nd channel".postln;
-        // file_buffers[i+ngvoices].allocReadChannelMsg(context.server, path, channels:[1], completionMessage:{
-         newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
-          arg buf;
-          file_buffers[i+ngvoices].free;
-          file_buffers[i+ngvoices] = buf;
-          gvoices[i+ngvoices].set(\buf2, file_buffers[i+ngvoices]);
-          gvoices[i+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
-          ["newbuf2",i,file_buffers[i+ngvoices]].postln;
+        ["newbuf",voice,file_buffers[voice]].postln;
+
+        if (numChannels > 1,{
+          "stereo file: read 2nd channel into buffer's 2nd channel".postln;
+          // file_buffers[i+ngvoices].allocReadChannelMsg(context.server, path, channels:[1], completionMessage:{
+          newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
+            arg buf2;
+            file_buffers[voice+ngvoices].free;
+            file_buffers[voice+ngvoices] = buf2;
+            gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
+            gvoices[voice+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
+            ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
+          });
+        },{
+          "mono file: read 1st channel into buffer's 2nd channel".postln;
+          newbuf2 = file_buffers[voice];
+          // file_buffers[voice+ngvoices].free;
+          file_buffers[voice+ngvoices] = newbuf2;
+          gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
+          gvoices[voice+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
+          ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
         });
-      },{
-        arg buf;
-        "mono file: read 1st channel into buffer's 2nd channel".postln;
-        newbuf2 = file_buffers[i];
-        file_buffers[i+ngvoices] = newbuf2;
-        gvoices[i+ngvoices].set(\buf2, file_buffers[i+ngvoices]);
-        gvoices[i+ngvoices].set(\buf_pos_end, sample_duration/buffer_length);
-        ["newbuf2",i,file_buffers[i+ngvoices]].postln;
       });
     });
 	}
@@ -86,8 +97,6 @@ EGlut {
 	init {
 		arg argServer, engContext, eng;
     var thisEngine;
-    var lua_sender;
-    var sc_sender;
 
     "init eglut".postln;
     osc_funcs=Dictionary.new();
@@ -971,11 +980,24 @@ EGlut {
         })
       },"/sc_eglut/live_pre_level");
     );     
+    
+    osc_funcs.put("mix_live_rec",
+      OSCFunc.new({ |msg,time,addr,recvPort|
+        var value = msg[1];
+        var voice = msg[2];
+        mix_live_rec[voice] = value
+      },"/sc_eglut/mix_live_rec");
+    );     
+
     osc_funcs.put("granulate_live",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
         var sample_duration=msg[2];
         var phase=rec_phase.getSynchronous();
+
+        gvoices[voice].set(\buf, live_buffers[voice]);
+        gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
+        ("set gvoices to live")
 
         recorders[voice].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);
         recorders[voice + ngvoices].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/buffer_length,  \pos,phase);

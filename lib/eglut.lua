@@ -6,14 +6,17 @@ e.all_param_ids   = {}
 e.all_param_names = {}
 e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
-e.start_scene_params_at = 7
+-- IMPORTANT: start_scene_params_at should be equal to the number
+-- of voice-only params
 
+e.start_scene_params_at = 8
 e.param_list={
   "sample_length",
   "sample_mode",
   "sample",
   "live_rec_level",
   "live_pre_level",
+  "mix_live_rec",
   "grain_params",
   "play",
   "volume","send","ptr_delay","speed","seek",
@@ -234,12 +237,25 @@ end
 function e:load_file(voice,scene,file)
   local sample_length = params:get(voice.."sample_length")
   engine.read(voice,file,sample_length)
+  local mix_live_rec = params:get(voice.."mix_live_rec")
+  if mix_live_rec == 1 then
+    softcut.rec_level(voice,0)
+    osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
+  end
+
   e:on_sample_selected(voice,scene,file)
 end
 
 function e:granulate_live(voice)
   local sample_length = params:get(voice.."sample_length")
   osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_length})
+  local mix_live_rec = params:get(voice.."mix_live_rec")
+  if mix_live_rec == 1 then
+    local live_rec_level = params:get(voice.."live_rec_level")
+    softcut.rec_level(voice,live_rec_level)
+    print("restore live rec level")
+    osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
+  end
 end
 
 function e:update_scene(voice,scene)
@@ -274,8 +290,8 @@ end
 
 function e:setup_params()
   params:add_separator("granular")
-  local old_volume={0.25,0.25,0.25,0.25}
   
+  ------------------- per voice params -------------------
   for i=1,e.num_voices do
     params:add_group("voice "..i,((#e.param_list-e.start_scene_params_at)*e.num_scenes))
     params:add_option(i.."scene","scene",e.scene_labels,1)
@@ -297,7 +313,7 @@ function e:setup_params()
         if sample_modes[mode]=="off" then
           params:set(i.."play"..params:get(i.."scene"),1)
         elseif sample_modes[mode]=="live stream" then
-          params:set(i.."play"..params:get(i.."scene"),1)
+          -- params:set(i.."play"..params:get(i.."scene"),1)
           params:set(i.."play"..params:get(i.."scene"),2)
           self:granulate_live(i)
         elseif sample_modes[mode]=="recorded" then
@@ -334,7 +350,10 @@ function e:setup_params()
       softcut.pre_level(i,value)
       osc.send( { "localhost", 57120 }, "/sc_eglut/live_pre_level",{value,i-1})
     end)
+    params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
   
+    ------------------- per scene params -------------------
+
     params:add_separator(i.."grain_params","param values")
     for scene=1,e.num_scenes do
       params:add_option(i.."play"..scene,"play",{"off","on"},1)

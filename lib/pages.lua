@@ -390,11 +390,20 @@ function pages:redraw(page_num, show_sig_positions)
     screen.level(10)  
     screen.move(self.composition_left,self.composition_bottom+7)
     screen.line_rel(self.composition_right-self.composition_left,0)
-    screen.level(self.p1ui.selected_ui_area_ix==4 and 15 or 5)  
+
+    local sample_length_selected = self.p1ui.selected_ui_area_ix==4
+    
+    screen.level(sample_length_selected and 15 or 5)  
     -- local sample_used = params:get(self.p1ui.selected_voice.."sample_length")/
     local sample_length = (params:get(voice.."sample_length"))/max_live_buffer_length
     screen.rect(self.composition_left,self.composition_bottom+5,(self.composition_right-self.composition_left)*sample_length,4)
 
+    if sample_length_selected then
+      label = "sample length"
+      label = label .. ": " .. util.round(sample_length * max_live_buffer_length,0.2)
+      screen.move(self.composition_left,self.composition_top-4)
+      screen.text(label)
+    end
   elseif page_num == 2 then
         
     -- draw reflector separators, labels, and animated bars

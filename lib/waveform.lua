@@ -66,8 +66,18 @@ end
 
 function Waveform:display_waveform()
   local x_pos = 0
+  local active_voice = params:get("active_voice")
+  local screen_level
+  local sample_mode = params:get(active_voice.."sample_mode")
+  local active_rec_level = params:get(active_voice.."live_rec_level")
+  local active_pre_level = params:get(active_voice.."live_pre_level")
+  if sample_mode ~= 2 then 
+    screen_level = 10 
+  else
+    screen_level = util.round((active_rec_level + active_pre_level) * 5)
+  end
   
-  screen.level(10)
+  screen.level(screen_level)
   local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
   for i,s in ipairs(self.waveform_samples) do
     local height = util.round(math.abs(s) * ((self.composition_top-self.composition_bottom)))
