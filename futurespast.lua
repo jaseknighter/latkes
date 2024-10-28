@@ -13,12 +13,14 @@
 -- be careful when setting different filter cutoff and rq between scenes or popping can occur when switching, esp. if rq is set low
 -- 
 -- bugs/improvement ideas:
+-- fix waveform rendering
 -- fix remaining pops and clicks (so size jitter params can be enabled)
+-- ????????what is the sync_waveform param doing??????
+-- move lua osc events that belong in eglut.lua into that file 
 -- !!!!! changing active scene in a voice affects all voices
 -- !!!!! param hiding broken when selecting voice 4
 -- allow setting start position of each voice
 -- why doesn't changing attack level make changes immediately, but requires a pause and addition value change to take effect?
--- what is max_analysis_length for?
 -- page 2
 --   add labels for sample mode, voice, scene
 --   add pause play for all recorders at the voice/scene level
@@ -93,7 +95,6 @@ waveform_names = {}
 waveform_sig_positions = {}
 composition_slice_positions = {}
 waveform_render_queue={}
-max_analysis_length = 60
 local waveform_active_play = {}
 -- local waveform_rendering=false
 
@@ -116,10 +117,15 @@ function show_waveform(waveform_name)
 end
 
 function waveform_render_queue_add(waveform_name, waveform_path,voice)
-  table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
   if #waveform_render_queue>0 then
-    -- print("waveform_render_queue_add",waveform_name, waveform_path)
-    waveforms[waveform_name].load(voice,waveform_path,max_analysis_length)
+    print("waveform_render_queue_add",waveform_name, waveform_path)
+    -- waveforms[waveform_name].load(voice,waveform_path,max_live_buffer_length)
+    table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
+  else
+    print("load waveform",waveform_name, waveform_path)
+    -- local render_length = params:get(next_waveform_voice.."sample_length")
+    -- waveforms[waveform_name].load(voice,waveform_path,max_live_buffer_length)
+    table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
   end
 end
 
@@ -136,12 +142,15 @@ function on_waveform_render(ch, start, i, s)
   elseif waveform_render_queue and waveform_render_queue[1] then
     local waveform_name=waveform_render_queue[1].name
     set_waveform_samples(ch, start, i, s, waveform_name)
+    print("granrec:on_waveform_render", #waveform_render_queue, ch, start, i, s)
     table.remove(waveform_render_queue,1)
     if #waveform_render_queue>0 then
       local next_waveform_name=waveform_render_queue[1].name
       local next_waveform_path=waveform_render_queue[1].path
       local next_waveform_voice=waveform_render_queue[1].voice
-      waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,max_analysis_length)
+      local render_length = params:get(next_waveform_voice.."sample_length")
+      waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,render_length)
+      -- waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,max_live_buffer_length)
     else
     end
   end
@@ -164,12 +173,27 @@ end
 --------------------------
 local script_osc_event = osc.event
 
-function on_eglut_file_loaded(voice,file)
-  print("on_eglut_file_loaded",voice, file)
-  waveform_render_queue_add(voice.."gran-rec",voice,file)  
-  local sample_length = params:get(voice.."sample_length")
-  waveforms[voice.."gran-rec"].load(voice,file,sample_length/max_analysis_length)  
+function load_recording_waveform(voice)
+  local function callback_func()
+    local file = params:get(voice.."sample")
+    local sample_length = params:get(voice.."sample_length")
+    print("load_recording_waveform",file,sample_length,max_live_buffer_length)
+    -- waveforms[voice.."gran-rec"].load(voice,file,sample_length)  
+    -- waveforms[voice.."gran-rec"].load(voice,file,max_live_buffer_length)  
+    waveform_render_queue_add(voice.."gran-rec",file,voice)  
+    
+  end
+  -- clock.run(enc_debouncer,callback_func,0.1)
+  callback_func()
 end
+
+function on_eglut_file_loaded(voice)
+  -- print("on eglut file loaded",voice)
+  -- local sample_length = params:get(voice.."sample_length")
+  -- waveforms[voice.."gran-rec"].load(voice,file,sample_length/max_live_buffer_length)  
+  load_recording_waveform(voice)
+end
+
 
 function set_eglut_sample(file,samplenum,scene)
   print("set_eglut_sample",file,samplenum,scene)
@@ -204,13 +228,10 @@ function osc.event(path,args,from)
       end
       screen_dirty = true
     end
-  elseif path == "/lua_eglut/set_sample_duration" then
+  elseif path == "/lua_eglut/on_eglut_file_loaded" then
     local voice = args[1]+1
     local duration = args[2]
-    local file = args[3]
-    print("update sample duration", voice, duration)
-    params:set(voice.."sample_length", duration)
-    on_eglut_file_loaded(voice,file)
+    on_eglut_file_loaded(voice, duration)
   elseif path == "/lua_osc/sc_inited" then
     print("fcm 2d corpus sc inited message received")
   end
@@ -840,7 +861,7 @@ function softcut_init()
     local loop_end = params:get(get_selected_voice() .. "sample_length") + 1
     current_loop_end = loop_end
     softcut.loop_end(i,loop_end) --voice,duration
-    softcut.position(i,1)
+    softcut.position(i,softcut_loop_start)
     softcut.play(i,1)
 
     -- set input rec level: input channel, voice, level
@@ -919,7 +940,7 @@ function init()
       end
       render_softcut_buffer(1,1,loop_end,128)
     end
-  end, 1/120, -1)
+  end, 1/30, -1)
   redrawtimer:start()
   screen_dirty = true
   osc.send( { "localhost", 57120 }, "/sc_osc/init_completed",{

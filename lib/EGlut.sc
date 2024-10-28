@@ -35,35 +35,42 @@ EGlut {
 	}
 
 	// read from an existing buffer into the granulation buffsers
-	setBufStartEnd { arg i, buf, mode,sample_duration;
-    gvoices[i].set(\buf_pos_end, sample_duration/max_buffer_length);
+	setBufStartEnd { arg i, buf, mode,sample_length;
+    gvoices[i].set(\buf_pos_end, sample_length/max_buffer_length);
+    (["set buf start end",mode,sample_length]).postln;
 	}
 
   // disk read
-	readDisk { arg voice, path, sample_duration;
+	readDisk { arg voice, path, sample_length;
     var startframe = 0;
     if (File.exists(path), {
       // load stereo files and duplicate GrainBuf for stereo granulation
       var newbuf,newbuf2;
-      var file, numChannels, duration;
+      var file, numChannels, soundfile_duration;
       var soundfile = SoundFile.new;
       soundfile.openRead(path.asString.standardizePath);
       numChannels = soundfile.numChannels;
-      duration = soundfile.duration;
+      soundfile_duration = soundfile.duration;
       soundfile.close;
-      ["file read into buffer...duration,sample_duration",duration,sample_duration].postln;
-      if (duration < sample_duration,{
-        sample_duration = duration;
-        (["reduce sample duration to match file duration",duration,sample_duration]).postln;
-        lua_sender.sendMsg("/lua_eglut/set_sample_duration",voice,sample_duration,path);
-      });
-      // ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_duration].postln;
+      ["file read into buffer...soundfile_duration,sample_length",soundfile_duration,sample_length].postln;
+      lua_sender.sendMsg("/lua_eglut/on_eglut_file_loaded",voice);
+
+      // if (sample_length > soundfile_duration,{
+        // sample_length = soundfile_duration;
+        // (["reduce sample duration to match file duration",soundfile_duration,sample_length]).postln;
+        // lua_sender.sendMsg("/lua_eglut/on_eglut_file_loaded",voice,sample_length);
+      // });
+
+
+      // ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_length].postln;
        newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
         arg buf;
-        file_buffers[voice].free;
-        file_buffers[voice] = buf;
+        // file_buffers[voice].free;
+        file_buffers[voice].zero;
+        // file_buffers[voice] = buf;
+        buf.copyData(file_buffers[voice]);
         gvoices[voice].set(\buf, file_buffers[voice]);
-        gvoices[voice].set(\buf_pos_end, sample_duration/max_buffer_length);
+        gvoices[voice].set(\buf_pos_end, sample_length/max_buffer_length);
 
         ["newbuf",voice,file_buffers[voice]].postln;
 
@@ -72,20 +79,35 @@ EGlut {
           // file_buffers[i+ngvoices].allocReadChannelMsg(context.server, path, channels:[1], completionMessage:{
           newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
             arg buf2;
-            file_buffers[voice+ngvoices].free;
-            file_buffers[voice+ngvoices] = buf2;
+            // file_buffers[voice+ngvoices].free;
+            file_buffers[voice+ngvoices].zero;
+            // file_buffers[voice+ngvoices] = buf2;
+            buf2.copyData(file_buffers[voice+ngvoices]);
             gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
-            gvoices[voice+ngvoices].set(\buf_pos_end, sample_duration/max_buffer_length);
+            gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
             ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
           });
         },{
           "mono file: read 1st channel into buffer's 2nd channel".postln;
-          newbuf2 = file_buffers[voice];
-          // file_buffers[voice+ngvoices].free;
-          file_buffers[voice+ngvoices] = newbuf2;
-          gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
-          gvoices[voice+ngvoices].set(\buf_pos_end, sample_duration/max_buffer_length);
-          ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
+          newbuf2 = Buffer.readChannel(context.server, path, channels:[0,0], action:{
+
+            arg buf;
+            // file_buffers[voice+ngvoices].free;
+            file_buffers[voice+ngvoices].zero;
+            // file_buffers[voice+ngvoices] = buf;
+            buf.copyData(file_buffers[voice+ngvoices]);
+            gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
+            gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
+            ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
+          });
+
+
+          // newbuf2 = file_buffers[voice];
+          // // file_buffers[voice+ngvoices].free;
+          // file_buffers[voice+ngvoices] = newbuf2;
+          // gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
+          // gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
+          // ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
         });
       });
     });
@@ -159,7 +181,7 @@ EGlut {
       gate=0, pos=0, 
       buf_pos_start=0, 
       buf_pos_end=1, 
-      sample_duration=10/max_buffer_length,
+      sample_length=10/max_buffer_length,
       speed=1, jitter=0, spread_sig=0, voice_pan=0,	
       size=0.1, size_jitter=0, density=20, density_jitter=0,pitch=1, spread_pan=0, gain=1, envscale=1,
       t_reset_pos=0, cutoff=20000, q, send=0, 
@@ -283,7 +305,7 @@ EGlut {
         start:buf_pos_start, end:buf_pos_end, resetPos: reset_pos);
 
       sig_pos = buf_pos;
-      ([voice,rec_phase.kr.asInteger]).poll;
+      // ([voice,rec_phase.kr.asInteger]).poll;
       sig_pos = (sig_pos*(1-sync_to_rec_head)) + (rec_phase.kr.asInteger*sync_to_rec_head);
       sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))).wrap(0,buf_pos_end);
       spread_sig = (spread_sig*buf_pos_end)/4;
@@ -720,11 +742,10 @@ EGlut {
 
       
       sig = BLowPass4.ar(sig, cutoff, q);
-      // sig = BPF.ar(sig, cutoff, q);
-
       sig = Compander.ar(sig,sig,0.25)/envscale;
       // sig = Compander.ar(sig,sig,0.25)/8;
-      sig = Balance2.ar(sig[0],sig[1],voice_pan);
+
+      sig = Balance2.ar(sig[0],sig[0],voice_pan);
       env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
       level = env;
       Out.ar(out, sig * level * gain);
@@ -981,19 +1002,34 @@ EGlut {
       },"/sc_eglut/live_pre_level");
     );     
     
+    osc_funcs.put("set_sample_length",
+      OSCFunc.new({ |msg,time,addr,recvPort|
+        var voice=msg[1];
+        var sample_length=msg[2];
+        var phase=rec_phase.getSynchronous();
+
+        recorders[voice].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
+        recorders[voice + ngvoices].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
+        (["recorders set sample_length: ", sample_length]).postln;
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_length);
+
+
+      },"/sc_osc/set_sample_length");
+    );   
+
     osc_funcs.put("granulate_live",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        var sample_duration=msg[2];
+        var sample_length=msg[2];
         var phase=rec_phase.getSynchronous();
 
         gvoices[voice].set(\buf, live_buffers[voice]);
         gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
 
-        recorders[voice].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/max_buffer_length,  \pos,phase);
-        recorders[voice + ngvoices].set(\sample_duration, sample_duration, \buf_pos_end, sample_duration/max_buffer_length,  \pos,phase);
+        recorders[voice].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
+        recorders[voice + ngvoices].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
         // (["recorders: ",recorders[voice],recorders[voice + ngvoices]]).postln;
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_duration);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_length);
       },"/sc_osc/granulate_live");
     );   
 

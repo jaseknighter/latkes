@@ -299,10 +299,20 @@ function e:setup_params()
       e:update_scene(i,scene)
     end)
     params:add_control(i.."sample_length","sample length",controlspec.new(1,self.max_live_buffer_length,"exp",0.1,10,"s",0.1/self.max_live_buffer_length))
-    params:set_action(i.."sample_length",function()
-      if params:get(i.."sample_mode") == 2 then
-        self:granulate_live(i)
+    params:set_action(i.."sample_length",function(value)
+      local function callback_func()
+        if params:get(i.."sample_mode") > 1 then
+          -- self:granulate_live(i)
+          local sample_length = params:get(i.."sample_length")
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_length",{i-1, sample_length})
+        end
+        
+        if params:get(i.."sample_mode") == 3 then
+          -- set_sample_duration(i,)
+          on_eglut_file_loaded(i)
+        end
       end
+      clock.run(enc_debouncer,callback_func,0.1)        
     end)
 
     local sample_modes={"off","live stream","recorded"}

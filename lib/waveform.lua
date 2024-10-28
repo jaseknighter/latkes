@@ -12,20 +12,23 @@ function Waveform:new(args)
 end
 
 function Waveform.load(voice,path,max_len)
-  print("waveform.load",voice,path,max_len)
   if path ~= "" then
     local ch, samples = audio.file_info(path)
-    if ch > 0 and samples > 0 then
-      softcut.buffer_clear()
-      clock.run(function()
+    clock.run(function()
+      -- clock.sleep(0.1)
+      print("waveform.load",voice,path,max_len,ch,samples)
+      if ch > 0 and samples > 0 then
+        -- softcut.buffer_clear()
         softcut.buffer_read_mono(path, 0, 1, -1, 1, 1, 0, 1)
         local len = (samples / 48000)
         local waveform_start = 1
-        local waveform_end = max_len and math.min(max_len,len) or len
+        local waveform_end = max_len and max_len or len
+        -- local waveform_end = max_len and math.min(max_len,len) or len
         print("path,samples,max_len",path,samples,max_len,waveform_start, waveform_end)
+        -- softcut.position(i,1)
         softcut.render_buffer(1, waveform_start, waveform_end, 127)
-      end)
-    end
+      end
+    end)
   else
     print("not a sound file")
   end
