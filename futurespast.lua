@@ -69,7 +69,7 @@ local record_live_duration = 10
 local num_voices = 4
 local num_scenes = 4
 local softcut_loop_start = 1
-local softcut_loop_end = 11--4
+local softcut_loop_end = 11
 
 voice1scene1_cc_channel = 1
 voice1scene2_cc_channel = 2
@@ -816,10 +816,6 @@ function enc_debouncer(callback,debounce_time)
   end
 end
 
-function softcut_reset_pos()
-  softcut.position(1,softcut_loop_start)
-end
-
 function get_selected_voice()
     return pages.p1ui.selected_voice
 end
@@ -848,8 +844,8 @@ function softcut_init()
     softcut.play(i,1)
 
     -- set input rec level: input channel, voice, level
-    softcut.level_input_cut(1,i,1.0)
-    softcut.level_input_cut(2,i,1.0)
+    softcut.level_input_cut(1,i,1)
+    softcut.level_input_cut(2,i,1)
 
     -- set voice record level 
     softcut.rec_level(i,1);
@@ -901,6 +897,9 @@ function init()
   softcut_init()
   
   redrawtimer = metro.init(function() 
+    if params:get("softcut_level") > -inf then
+      params:set("softcut_level",-inf)
+    end
     local active_voice, scene = pages:get_selected_ui_elements()
     --check to keep active scene in sync with selected scene of active voice
     if scene ~= params:get(active_voice.."scene") then
@@ -914,12 +913,13 @@ function init()
       if current_loop_end ~= loop_end then 
         -- softcut_init()
         softcut.loop_start(active_voice,softcut_loop_start)
+        -- print("loop end",active_voice,softcut_loop_start, loop_end, current_loop_end )
         softcut.loop_end(active_voice,loop_end) --voice,duration
         current_loop_end = loop_end
       end
       render_softcut_buffer(1,1,loop_end,128)
     end
-  end, 1/15, -1)
+  end, 1/120, -1)
   redrawtimer:start()
   screen_dirty = true
   osc.send( { "localhost", 57120 }, "/sc_osc/init_completed",{

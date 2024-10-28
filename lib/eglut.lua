@@ -253,7 +253,6 @@ function e:granulate_live(voice)
   if mix_live_rec == 1 then
     local live_rec_level = params:get(voice.."live_rec_level")
     softcut.rec_level(voice,live_rec_level)
-    print("restore live rec level")
     osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
   end
 end
