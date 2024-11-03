@@ -14,12 +14,12 @@ end
 function Waveform.load(voice,path,max_len)
   if path ~= "" then
     local ch, samples = audio.file_info(path)
+    print("waveform.load",voice,path,max_len,ch,samples)
+    softcut.buffer_read_mono(path, 0, 1, -1, 1, 1, 0, 1)
     clock.run(function()
-      -- clock.sleep(0.1)
-      print("waveform.load",voice,path,max_len,ch,samples)
+      clock.sleep(0.1)
       if ch > 0 and samples > 0 then
         -- softcut.buffer_clear()
-        softcut.buffer_read_mono(path, 0, 1, -1, 1, 1, 0, 1)
         local len = (samples / 48000)
         local waveform_start = 1
         local waveform_end = max_len and max_len or len
@@ -36,12 +36,11 @@ function Waveform.load(voice,path,max_len)
 end
 
 function Waveform:set_samples(samples)
-  self.waveform_samples = samples
-  -- tab.print(samples)
+  self.samples = samples
 end
 
 function Waveform:get_samples()
-  return self.waveform_samples
+  return self.samples
 end
 
 function Waveform:display_sigs_pos(sigs_pos, highlight_sig_positions)
@@ -85,7 +84,7 @@ function Waveform:display_waveform()
   
   screen.level(screen_level)
   local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
-  for i,s in ipairs(self.waveform_samples) do
+  for i,s in ipairs(self.samples) do
     local height = util.round(math.abs(s) * ((self.composition_top-self.composition_bottom)))
     screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos), center - (height/2))
     screen.line_rel(0, height)

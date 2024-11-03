@@ -88,7 +88,7 @@ function set_16n_channel_and_cc_values(channel, skip_exclusions)
 end
 
 function midi_helper.update_midi_devices(channel, skip_exclusions)
-  -- print("set midi channel", channel)
+  print("update_midi_devices: set midi channel", channel)
   -- print("device_16n",device_16n)
   if device_16n then set_16n_channel_and_cc_values(channel, skip_exclusions) end
 end

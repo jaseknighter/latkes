@@ -39,46 +39,6 @@ for i=1,e.num_voices do
   e.active_scenes[i]=1
 end
 
--- morphing function
--- note: the last two parameters (steps_remaining and next_val) are "private" to the function and don't need to included in the inital call to the function
--- example code for initiating a morph: `morph(my_callback_function,1,10,2,10,"log")`
-function morph(callback,s_val,f_val,duration,steps,shape, id, steps_remaining, next_val)
-  local start_val = s_val < f_val and s_val or f_val
-  local finish_val = s_val < f_val and f_val or s_val
-  local increment = (finish_val-start_val)/steps
-  if next_val and steps_remaining < steps then
-    local delay = duration/steps
-    clock.sleep(delay)
-    local return_val = next_val
-    if s_val ~= f_val then
-      callback(return_val, id)
-    else
-      callback(s_val, id)
-    end
-  end
-  local steps_remaining = steps_remaining and steps_remaining - 1 or steps 
-  
-  if steps_remaining >= 0 then
-    local value_to_convert
-    if next_val == nil then
-      value_to_convert = start_val
-    elseif s_val < f_val then
-      -- value_to_convert = next_val and s_val + ((steps-steps_remaining) * increment) 
-      value_to_convert = next_val and start_val + ((steps-steps_remaining) * increment) 
-    else
-      value_to_convert = next_val and finish_val - ((steps-steps_remaining) * increment) 
-    end 
-
-    if shape == "exp" then
-      next_val = util.linexp(start_val,finish_val,start_val,finish_val, value_to_convert)
-    elseif shape == "log" then
-      next_val = util.explin(start_val,finish_val,start_val,finish_val, value_to_convert)
-    else
-      next_val = util.linlin(start_val,finish_val,start_val,finish_val, value_to_convert)
-    end
-    clock.run(morph,callback,s_val,f_val,duration,steps,shape, id, steps_remaining,next_val)
-  end
-end
 
 function e.table_concat(t1,t2,t1_start,t2_start)
   local concat_table={}
@@ -174,7 +134,7 @@ function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
   self.min_live_buffer_length = min_live_buffer_length or 0.1
-  self.max_live_buffer_length = max_live_buffer_length or 120
+  self.max_live_buffer_length = max_live_buffer_length or 85
   
 end
 
@@ -312,7 +272,8 @@ function e:setup_params()
           on_eglut_file_loaded(i)
         end
       end
-      clock.run(enc_debouncer,callback_func,0.1)        
+      callback_func()
+      -- clock.run(enc_debouncer,callback_func,0.1)        
     end)
 
     local sample_modes={"off","live stream","recorded"}
@@ -397,7 +358,7 @@ function e:setup_params()
       
       
       local function speed_check(speed,voice,scene)
-        clock.sleep(0.1, speed, voice, scene)
+        -- clock.sleep(0.1)
         for i=1,#e.speed_magnets do
           if speed ~= e.speed_magnets[i] and speed-0.05 < e.speed_magnets[i] and speed+0.05 > e.speed_magnets[i] then
             params:set(voice.."speed"..scene,e.speed_magnets[i])
@@ -411,7 +372,8 @@ function e:setup_params()
       
       params:set_action(i.."speed"..scene,function(value) 
         engine.speed(i,value) 
-        clock.run(speed_check,value,i,scene)
+        -- clock.run(speed_check,value,i,scene)
+        speed_check(value,i,scene)
       end)
 
       params:add_control(i.."seek"..scene,"seek",controlspec.new(0,1,"lin",0.001,0,"",0.001/1,true))
@@ -423,24 +385,9 @@ function e:setup_params()
         local function callback_func()
           engine.size(i,util.clamp(value*clock.get_beat_sec()/10,0.001,util.linlin(1,40,1,0.1,params:get(i.."density"..scene))))
         end
-        clock.run(enc_debouncer,callback_func,0.2)
+        callback_func()
+        -- clock.run(enc_debouncer,callback_func,0.2)
       end)
-
-      -- params:add_control(i.."size_jitter"..scene,"size jitter",controlspec.new(0,1,"lin",0.1,0,"",1/100))
-      -- params:set_action(i.."size_jitter"..scene,function(value) 
-      --   local function callback_func()
-      --     engine.size_jitter(i,(value*params:get(i.."size_jitter_mult"..scene))*clock.get_beat_sec()/10) 
-      --   end
-      --   clock.run(enc_debouncer,callback_func,0.2)
-      -- end)
-      -- params:add_control(i.."size_jitter_mult"..scene,"size jitter mult",controlspec.new(1,5,"lin",1,1,"",1/10))
-      -- params:set_action(i.."size_jitter_mult"..scene,function(value) 
-      --   local function callback_func()
-      --     engine.size_jitter(i,(value*params:get(i.."size_jitter"..scene))*clock.get_beat_sec()/10) 
-      --   end
-      --   clock.run(enc_debouncer,callback_func,0.2)
-      -- end)
-
 
       params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",1,4,"/beat",1/40))
       params:set_action(i.."density"..scene,function(value) engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) end)
@@ -653,20 +600,20 @@ function e:setup_params()
   end
 
   self:bang(1,1)
-  clock.run(e.init_active_echo)
+  -- clock.run(e.init_active_echo)
   e.inited=true
 end
 
-function e.init_active_echo()
-  clock.sleep(0.5)
-  local scene=params:get("echoscene")
-  for _,param_name in ipairs(e.param_list_echo) do
-    local p=params:lookup_param(param_name..scene)
-    if p.t~=6 then 
-      p:bang() 
-    end
-  end
-end
+-- function e.init_active_echo()
+--   clock.sleep(0.5)
+--   local scene=params:get("echoscene")
+--   for _,param_name in ipairs(e.param_list_echo) do
+--     local p=params:lookup_param(param_name..scene)
+--     if p.t~=6 then 
+--       p:bang() 
+--     end
+--   end
+-- end
 
 function e:cleanup()
   print("eglut cleanup")

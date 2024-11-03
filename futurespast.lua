@@ -44,10 +44,8 @@ engine.name='Futurespast'
 reflection = require 'reflection'
 
 
-fileselect=include("lib/fileselect")
 eglut=include("lib/eglut")
 waveform=include("lib/waveform")
-gridcontrol=include("lib/gridcontrol")
 pages=include("lib/pages")
 midi_helper=include("lib/midi_helper")
 
@@ -102,8 +100,7 @@ local audio_path = _path.audio..norns.state.name.."/"
 local data_path=_path.data..norns.state.name.."/"
 local reflection_data_path=data_path.."reflectors/"
 
-mmin_live_buffer_length = 120
-max_live_buffer_length = 120
+max_live_buffer_length = 85
 
 --------------------------
 -- waveform rendering
@@ -119,17 +116,16 @@ end
 function waveform_render_queue_add(waveform_name, waveform_path,voice)
   if #waveform_render_queue>0 then
     print("waveform_render_queue_add",waveform_name, waveform_path)
-    -- waveforms[waveform_name].load(voice,waveform_path,max_live_buffer_length)
     table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
   else
-    print("load waveform",waveform_name, waveform_path)
-    -- local render_length = params:get(next_waveform_voice.."sample_length")
-    -- waveforms[waveform_name].load(voice,waveform_path,max_live_buffer_length)
+    print("load and display waveform!!!",waveform_name, waveform_path)
     table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
-  end
+    render_softcut_buffer(1,1,current_loop_end,128)
+  end    
 end
 
 function render_softcut_buffer(buffer,winstart,winend,samples)
+  -- print("render_softcut_buffer",buffer,winstart,winend,samples)
   softcut.render_buffer(buffer, winstart, winend - winstart, samples)
 end
 
@@ -143,17 +139,22 @@ function on_waveform_render(ch, start, i, s)
     local waveform_name=waveform_render_queue[1].name
     set_waveform_samples(ch, start, i, s, waveform_name)
     print("granrec:on_waveform_render", #waveform_render_queue, ch, start, i, s)
-    table.remove(waveform_render_queue,1)
     if #waveform_render_queue>0 then
       local next_waveform_name=waveform_render_queue[1].name
       local next_waveform_path=waveform_render_queue[1].path
       local next_waveform_voice=waveform_render_queue[1].voice
       local render_length = params:get(next_waveform_voice.."sample_length")
+      print("call waveform load")
       waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,render_length)
-      -- waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,max_live_buffer_length)
     else
+      print(#waveform_render_queue)
     end
+    table.remove(waveform_render_queue,1)
   end
+end
+
+function get_active_waveform()
+  return waveforms[waveform_names[params:get("show_waveform")]]
 end
 
 function set_waveform_samples(ch, start, i, s, waveform_name)
@@ -178,8 +179,6 @@ function load_recording_waveform(voice)
     local file = params:get(voice.."sample")
     local sample_length = params:get(voice.."sample_length")
     print("load_recording_waveform",file,sample_length,max_live_buffer_length)
-    -- waveforms[voice.."gran-rec"].load(voice,file,sample_length)  
-    -- waveforms[voice.."gran-rec"].load(voice,file,max_live_buffer_length)  
     waveform_render_queue_add(voice.."gran-rec",file,voice)  
     
   end
@@ -188,18 +187,7 @@ function load_recording_waveform(voice)
 end
 
 function on_eglut_file_loaded(voice)
-  -- print("on eglut file loaded",voice)
-  -- local sample_length = params:get(voice.."sample_length")
-  -- waveforms[voice.."gran-rec"].load(voice,file,sample_length/max_live_buffer_length)  
   load_recording_waveform(voice)
-end
-
-
-function set_eglut_sample(file,samplenum,scene)
-  print("set_eglut_sample",file,samplenum,scene)
-  params:set(samplenum.."sample",file)
-  clock.sleep(0.1)
-  eglut:update_scene(samplenum,scene)
 end
 
 function osc.event(path,args,from)
@@ -826,16 +814,16 @@ end
 -- reflector stuff end
 ---------------------------------------------------
 
-function enc_debouncer(callback,debounce_time)
-  -- if debounce_time then print("deb",debounce_time) end
-  debounce_time = debounce_time or 0.1
-  if enc_debouncing == false then
-    enc_debouncing = true
-    clock.sleep(debounce_time)
-    callback()
-    enc_debouncing = false
-  end
-end
+-- function enc_debouncer(callback,debounce_time)
+--   -- if debounce_time then print("deb",debounce_time) end
+--   debounce_time = debounce_time or 0.1
+--   if enc_debouncing == false then
+--     enc_debouncing = true
+--     clock.sleep(debounce_time)
+--     callback()
+--     enc_debouncing = false
+--   end
+-- end
 
 function get_selected_voice()
     return pages.p1ui.selected_voice
@@ -910,7 +898,6 @@ function init()
 
   -- eglut:init_lattice()
   init_reflectors()
-  gridcontrol:init()
   print("eglut inited and params setup")
   -- params:set("1play1",2)
 
@@ -928,13 +915,13 @@ function init()
       params:set("active_scene",scene)
     end
     
-    if (norns.menu.status() == false and fileselect.done~=false) then
+    if (norns.menu.status() == false) then
       if screen_dirty == true then redraw() end
       local loop_end = params:get(active_voice  .. "sample_length") + 1
       if current_loop_end ~= loop_end then 
         -- softcut_init()
         softcut.loop_start(active_voice,softcut_loop_start)
-        -- print("loop end",active_voice,softcut_loop_start, loop_end, current_loop_end )
+        print("loop end",active_voice,softcut_loop_start, loop_end, current_loop_end )
         softcut.loop_end(active_voice,loop_end) --voice,duration
         current_loop_end = loop_end
       end
@@ -983,7 +970,7 @@ function init()
       params:set(i.."ptr_delay"..j,0.01)
     end
   end
-  print("init done...starting active_voice/active_scene",active_voice,active_scene)
+  -- print("init done...starting active_voice/active_scene")
 end
 
 function key(k,z)  
@@ -1043,7 +1030,6 @@ function cleanup ()
   softcut.event_render(nil)
 
   reflectors=nil
-  if redrawtimer then metro.free(redrawtimer) end
+  -- if redrawtimer then metro.free(redrawtimer) end
   eglut:cleanup()
-  gridcontrol:cleanup()
 end

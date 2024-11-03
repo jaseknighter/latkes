@@ -24,7 +24,7 @@ EGlut {
   var osc_funcs;
   var recorders;
   var live_streamer;
-  var max_buffer_length = 120;
+  var max_buffer_length =85;
   var max_size = 5;
     
 
