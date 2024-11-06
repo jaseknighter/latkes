@@ -12,36 +12,52 @@ EGlut {
 	var <gvoices;
 	var effectBus;
 	var <phases;
-	var <rec_phase;
+	var <rec_phases;
 	var <levels;
 	var <gr_envbufs;
-  var updating_gr_envbufs = false;
-  var prev_sig_pos1=0, prev_sig_pos2=0, prev_sig_pos3=0, prev_sig_pos4=0;
+  var updating_gr_envbufs=false;
+  var prev_sig_pos1=0,prev_sig_pos2=0,prev_sig_pos3=0,prev_sig_pos4=0;
 
   var lua_sender;
   var sc_sender;
 
   var osc_funcs;
   var recorders;
-  var live_streamer;
-  var max_buffer_length =85;
-  var max_size = 5;
+  var max_buffer_length=80;
+  var max_size=5;
     
 
 	*new {
-		arg argServer, context, eng;
+		arg argServer,context,eng;
 		^super.new.init(argServer,context,eng);
 
 	}
 
 	// read from an existing buffer into the granulation buffsers
-	setBufStartEnd { arg i, buf, mode,sample_length;
-    gvoices[i].set(\buf_pos_end, sample_length/max_buffer_length);
-    (["set buf start end",mode,sample_length]).postln;
+	setBufStartEnd { arg voice, buf, mode,sample_start, sample_length;
+    var start = sample_start/max_buffer_length;
+    var end = (sample_start + sample_length)/max_buffer_length;
+    var rec_phase=rec_phases[voice].getSynchronous;
+
+    recorders[voice].set(
+      \buf_pos_start, start, 
+      \buf_pos_end, end,  
+      \pos,rec_phase,
+      // \t_reset_pos, 1
+    );
+    recorders[voice + ngvoices].set(
+      \buf_pos_start, start, 
+      \buf_pos_end, end,  
+      \pos,rec_phase,
+      // \t_reset_pos, 1
+    );
+    
+    gvoices[voice].set(\buf_pos_start, start);
+    gvoices[voice].set(\buf_pos_end, end);    
 	}
 
   // disk read
-	readDisk { arg voice, path, sample_length;
+	readDisk { arg voice, path, sample_start, sample_length;
     var startframe = 0;
     if (File.exists(path), {
       // load stereo files and duplicate GrainBuf for stereo granulation
@@ -52,62 +68,38 @@ EGlut {
       numChannels = soundfile.numChannels;
       soundfile_duration = soundfile.duration;
       soundfile.close;
-      ["file read into buffer...soundfile_duration,sample_length",soundfile_duration,sample_length].postln;
+      ["file read into buffer...soundfile_duration,sample_start,sample_length",soundfile_duration,sample_start, sample_length].postln;
       lua_sender.sendMsg("/lua_eglut/on_eglut_file_loaded",voice);
 
-      // if (sample_length > soundfile_duration,{
-        // sample_length = soundfile_duration;
-        // (["reduce sample duration to match file duration",soundfile_duration,sample_length]).postln;
-        // lua_sender.sendMsg("/lua_eglut/on_eglut_file_loaded",voice,sample_length);
-      // });
-
-
-      // ["file read into buffer...num channels,startframe,numFrames",path.asString.standardizePath,numChannels,startframe,s.sampleRate * sample_length].postln;
        newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
-        arg buf;
-        // file_buffers[voice].free;
+        arg newbuf;
         file_buffers[voice].zero;
-        // file_buffers[voice] = buf;
-        buf.copyData(file_buffers[voice]);
+        newbuf.copyData(file_buffers[voice]);
         gvoices[voice].set(\buf, file_buffers[voice]);
-        gvoices[voice].set(\buf_pos_end, sample_length/max_buffer_length);
+        gvoices[voice].set(\buf_pos_start, sample_start/max_buffer_length);
+        gvoices[voice].set(\buf_pos_end, (sample_start + sample_length)/max_buffer_length);
 
         ["newbuf",voice,file_buffers[voice]].postln;
 
         if (numChannels > 1,{
           "stereo file: read 2nd channel into buffer's 2nd channel".postln;
-          // file_buffers[i+ngvoices].allocReadChannelMsg(context.server, path, channels:[1], completionMessage:{
           newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
-            arg buf2;
-            // file_buffers[voice+ngvoices].free;
+            arg newbuf2;
             file_buffers[voice+ngvoices].zero;
-            // file_buffers[voice+ngvoices] = buf2;
-            buf2.copyData(file_buffers[voice+ngvoices]);
-            gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
-            gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
+            newbuf2.copyData(file_buffers[voice+ngvoices]);
+            gvoices[voice].set(\buf2, file_buffers[voice+ngvoices]);
             ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
           });
         },{
           "mono file: read 1st channel into buffer's 2nd channel".postln;
           newbuf2 = Buffer.readChannel(context.server, path, channels:[0,0], action:{
 
-            arg buf;
-            // file_buffers[voice+ngvoices].free;
+            arg newbuf2;
             file_buffers[voice+ngvoices].zero;
-            // file_buffers[voice+ngvoices] = buf;
-            buf.copyData(file_buffers[voice+ngvoices]);
-            gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
-            gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
+            newbuf2.copyData(file_buffers[voice+ngvoices]);
+            gvoices[voice].set(\buf2, file_buffers[voice+ngvoices]);
             ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
           });
-
-
-          // newbuf2 = file_buffers[voice];
-          // // file_buffers[voice+ngvoices].free;
-          // file_buffers[voice+ngvoices] = newbuf2;
-          // gvoices[voice+ngvoices].set(\buf2, file_buffers[voice+ngvoices]);
-          // gvoices[voice+ngvoices].set(\buf_pos_end, sample_length/max_buffer_length);
-          // ["newbuf2",voice,file_buffers[voice+ngvoices]].postln;
         });
       });
     });
@@ -129,12 +121,15 @@ EGlut {
 		s=argServer;
     context = engContext;
     thisEngine = eng;
-    
+
+    // rec_phases=Bus.control(context.server,ngvoices*2);
+    rec_phases = Array.fill(ngvoices*2, { arg i;
+      Bus.control(context.server)
+    });
+
     live_buffers = Array.fill(ngvoices*2, { arg i;
-      Buffer.alloc(
-        s,
-        s.sampleRate * max_buffer_length,
-      );
+      var num_samples=s.sampleRate * max_buffer_length;
+      Buffer.alloc(s,num_samples,1);
     });
 
     s.sync;
@@ -145,41 +140,56 @@ EGlut {
         s.sampleRate * max_buffer_length,
       );
     });
-
-    // live streamer position bus
-    rec_phase=Bus.control(context.server);
-    ["rec_phase",rec_phase].postln;
     
-    SynthDef("live_streamer", {
-      arg out=0, in=0, phase,
+    SynthDef("live_recorder", {
+      arg voice=0,out=0,in=0, 
           buf=0, rate=1,
-          pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=1,
+          pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=0,
           rec_level=1,pre_level=0;
       var buf_dur,buf_pos;
       var sig=SoundIn.ar(in);
-      var rec_buf_reset = Impulse.kr((buf_pos_end*max_buffer_length).reciprocal);
+      var rec_buf_reset = Impulse.kr(
+            freq:((buf_pos_end-buf_pos_start)*max_buffer_length).reciprocal,
+            phase:t_reset_pos
+          );
+      var recording_offset = buf_pos_start*max_buffer_length*SampleRate.ir;
       buf_dur = BufDur.kr(buf);
-      buf_pos = Phasor.kr(trig: t_reset_pos,
+      buf_pos = Phasor.kr(trig: t_reset_pos + rec_buf_reset,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
         start:buf_pos_start, end:buf_pos_end, resetPos: pos);
       
-      RecordBuf.ar(sig, buf, offset: 0, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: rec_buf_reset, doneAction: 0);
-      // buf_pos.poll;
-      Out.kr(rec_phase.index, buf_pos);
+      // (voice < 1 * pos).poll;
+      // (buf_pos).poll;
+      // (voice < 1 * buf_pos_start*max_buffer_length).poll;
+      // (voice < 1 * buf_pos*max_buffer_length).poll;
+      // (voice < 1 * (((buf_pos_end-buf_pos_start)*max_buffer_length).reciprocal)).poll;
+      // (voice < 1 * rec_buf_reset).poll;
+      // (voice < 1 * t_reset_pos).poll;
+      // (voice < 1 * buf_pos_start).poll;
+      // (voice < 1 * buf_pos_end).poll;
+
+
+      RecordBuf.ar(sig, buf, offset: recording_offset, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: t_reset_pos + rec_buf_reset, doneAction: 0);
+
+      SendReply.kr(Impulse.kr(30), "/eglut_rec_phases", [voice,buf_pos]);
+
     }).add;
 
     s.sync;
-    recorders = Array.fill(ngvoices*2, { arg voice;
-      (["add recorder",ngvoices,voice]).postln;
-      Synth(\live_streamer, [\in,0,\buf,live_buffers[voice]]);
+    recorders = Array.fill(ngvoices*2, { arg i;
+      var chan;
+      if(i < ngvoices,{chan=0},{chan=1});
+      (["add recorder",ngvoices,i,chan]).postln;
+      Synth(\live_recorder, [\voice, i,\buf,live_buffers[i],\in,chan]);
     });
     s.sync;
     recorders.postln;
 
-    SynthDef(\synth, {
+    SynthDef("grain_synth", {
       arg voice, out, effectBus, phase_out, level_out, buf, buf2,
       gate=0, pos=0, 
       buf_pos_start=0, 
+      rec_phase=0,
       buf_pos_end=1, 
       sample_length=10/max_buffer_length,
       speed=1, jitter=0, spread_sig=0, voice_pan=0,	
@@ -199,6 +209,7 @@ EGlut {
       var sig_pos1, sig_pos2, sig_pos3, sig_pos4;
       var sig2_pos1, sig2_pos2, sig2_pos3, sig2_pos4;
       var active_sig_pos1, active_sig_pos2, active_sig_pos3, active_sig_pos4;
+      var window_sig_pos1, window_sig_pos2, window_sig_pos3, window_sig_pos4;
       var buf_dur;
       var pan_sig;
       var pan_sig2;
@@ -217,8 +228,8 @@ EGlut {
       var switch=0,switch1,switch2,switch3,switch4;
       var reset_sig_ix=0,crossfade;
       
-      pos = pos * buf_pos_end;
-
+      pos = pos.linlin(0,1,buf_pos_start,buf_pos_end);
+      // pos.poll;
       size_jitter_sig = TRand.kr(trig: Impulse.kr(density),
         lo: size_jitter.neg,
         hi: size_jitter);
@@ -276,8 +287,10 @@ EGlut {
       reset_pos = pos;
 
       // modulate the start/stop
-  		phasor_start = buf_pos_start+((size)/max_buffer_length);
-  		phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end-(size/max_buffer_length));
+  		phasor_start = buf_pos_start;
+  		phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end);
+  		// phasor_start = buf_pos_start+((size)/max_buffer_length);
+  		// phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end-(size/max_buffer_length));
 
   		// LocalIn collects a trigger whenever the playheads leave the buffer window.
     	localin = LocalIn.kr(1);
@@ -305,16 +318,16 @@ EGlut {
         start:buf_pos_start, end:buf_pos_end, resetPos: reset_pos);
 
       sig_pos = buf_pos;
-      // ([voice,rec_phase.kr.asInteger]).poll;
-      sig_pos = (sig_pos*(1-sync_to_rec_head)) + (rec_phase.kr.asInteger*sync_to_rec_head);
-      sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))).wrap(0,buf_pos_end);
-      spread_sig = (spread_sig*buf_pos_end)/4;
+      // sig_pos = (sig_pos*(1-sync_to_rec_head)) + (rec_phase[voice].kr().asInteger*sync_to_rec_head);
+      sig_pos = (rec_phase*sync_to_rec_head) + (sig_pos*(1-sync_to_rec_head));
+      sig_pos = (sig_pos - ((ptr_delay * SampleRate.ir)/ BufFrames.kr(buf))).wrap(buf_pos_start,buf_pos_end);
+      spread_sig = (spread_sig*(buf_pos_end-buf_pos_start))/4;
 
       // add jitter and spread to each signal position
-      sig_pos1 = (sig_pos+jitter_sig).wrap(0,buf_pos_end);
-      sig_pos2 = (sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(0,buf_pos_end);
-      sig_pos3 = (sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(0,buf_pos_end);
-      sig_pos4 = (sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(0,buf_pos_end);
+      sig_pos1 = (sig_pos+jitter_sig).wrap(buf_pos_start,buf_pos_end);
+      sig_pos2 = (sig_pos+jitter_sig2+(spread_sig)+spread_sig_offset1).wrap(buf_pos_start,buf_pos_end);
+      sig_pos3 = (sig_pos+jitter_sig3+(spread_sig*2)+spread_sig_offset2).wrap(buf_pos_start,buf_pos_end);
+      sig_pos4 = (sig_pos+jitter_sig4+(spread_sig*3)+spread_sig_offset3).wrap(buf_pos_start,buf_pos_end);
       
       sig2_pos1 = sig_pos1;
       sig2_pos2 = sig_pos2;
@@ -347,8 +360,18 @@ EGlut {
       active_sig_pos3 = ((switch3 < 1) * sig_pos3) + ((switch3 > 0) * sig2_pos3);
       active_sig_pos4 = ((switch4 < 1) * sig_pos4) + ((switch4 > 0) * sig2_pos4);
 
-
-      SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, active_sig_pos1/buf_pos_end, active_sig_pos2/buf_pos_end, active_sig_pos3/buf_pos_end, active_sig_pos4/buf_pos_end]);
+      //calculate the signal position relative to the window of the active buffer (buf_pos_start/buf_pos_end)
+      window_sig_pos1 = active_sig_pos1.linlin(buf_pos_start,buf_pos_end,0,1);
+      window_sig_pos2 = active_sig_pos2.linlin(buf_pos_start,buf_pos_end,0,1);
+      window_sig_pos3 = active_sig_pos3.linlin(buf_pos_start,buf_pos_end,0,1);
+      window_sig_pos4 = active_sig_pos4.linlin(buf_pos_start,buf_pos_end,0,1);
+      // ([voice,rec_phase.kr.asInteger]).poll;
+      // (voice < 1 * window_sig_pos1).poll;
+      // (voice < 1 * active_sig_pos1).poll;
+      // (voice < 1 * buf_pos_start).poll;
+      // (voice < 1 * buf_pos_end).poll;
+      SendReply.kr(Impulse.kr(30), "/eglut_sigs_pos", [voice,window_sig_pos1, window_sig_pos2, window_sig_pos3, window_sig_pos4]);
+      // SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, active_sig_pos1/buf_pos_end, active_sig_pos2/buf_pos_end, active_sig_pos3/buf_pos_end, active_sig_pos4/buf_pos_end]);
 
       sig = GrainBuf.ar(
             numChannels: 2, 
@@ -745,7 +768,7 @@ EGlut {
       sig = Compander.ar(sig,sig,0.25)/envscale;
       // sig = Compander.ar(sig,sig,0.25)/8;
 
-      sig = Balance2.ar(sig[0],sig[0],voice_pan);
+      sig = Balance2.ar(sig[0],sig[1],voice_pan);
       env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
       level = env;
       Out.ar(out, sig * level * gain);
@@ -783,7 +806,7 @@ EGlut {
     pg = ParGroup.head(context.xg);
 
     gvoices = Array.fill(ngvoices, { arg i;
-      Synth.new(\synth, [
+      Synth.new(\grain_synth, [
         \voice, i,
         \out, context.out_b.index,
         \effectBus, effectBus.index,
@@ -807,8 +830,12 @@ EGlut {
     thisEngine.addCommand("echo_mod_depth", "f", { arg msg; effect.set(\modDepth, msg[1]); });
     thisEngine.addCommand("echo_mod_freq", "f", { arg msg; effect.set(\modFreq, msg[1]); });
 
-    thisEngine.addCommand("read", "isf", { arg msg;
-      this.readDisk(msg[1] - 1, msg[2],msg[3]);
+    thisEngine.addCommand("read", "isff", { arg msg;
+      var voice = msg[1]-1;
+      var path = msg[2];
+      var sample_start = msg[3];
+      var sample_length = msg[4];
+      this.readDisk(voice,path,sample_start,sample_length);
     });
 
     thisEngine.addCommand("seek", "if", { arg msg;
@@ -1002,38 +1029,38 @@ EGlut {
       },"/sc_eglut/live_pre_level");
     );     
     
-    osc_funcs.put("set_sample_length",
+    osc_funcs.put("set_sample_position",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        var sample_length=msg[2];
-        var phase=rec_phase.getSynchronous();
-
-        recorders[voice].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
-        recorders[voice + ngvoices].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
-        (["recorders set sample_length: ", sample_length]).postln;
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_length);
+        var sample_start=msg[2];
+        var sample_length=msg[3];
+        // (["recorders set sample_start,sample_length: ", sample_start, sample_length]).postln;
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
 
 
-      },"/sc_osc/set_sample_length");
+      },"/sc_osc/set_sample_position");
     );   
 
     osc_funcs.put("granulate_live",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        var sample_length=msg[2];
-        var phase=rec_phase.getSynchronous();
-
+        var sample_start=msg[2];
+        var sample_length=msg[3];
+        
         gvoices[voice].set(\buf, live_buffers[voice]);
         gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
-
-        recorders[voice].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
-        recorders[voice + ngvoices].set(\sample_length, sample_length, \buf_pos_end, sample_length/max_buffer_length,  \pos,phase);
-        // (["recorders: ",recorders[voice],recorders[voice + ngvoices]]).postln;
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_length);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
       },"/sc_osc/granulate_live");
     );   
 
 
+
+    OSCdef(\eglut_rec_phases, {|msg| 
+      var voice = msg[3];
+      var rec_phase = msg[4];
+      rec_phases[voice].setnAt(voice, [rec_phase]);
+      gvoices[voice].set(\rec_phase,rec_phase);
+    }, "/eglut_rec_phases");
 
     OSCdef(\eglut_sigs_pos, {|msg| 
       var voice = msg[3];
@@ -1072,9 +1099,8 @@ EGlut {
     live_buffers.do({ arg b; b.free; });
     file_buffers.do({ arg b; b.free; });
     gr_envbufs.do({ arg b; b.free; });
-    live_streamer.free;
     effect.free;
     effectBus.free;
-    rec_phase.free;
+    rec_phases.free;
   }
 }

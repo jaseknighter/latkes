@@ -9,8 +9,9 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
 
-e.start_scene_params_at = 8
+e.start_scene_params_at = 9
 e.param_list={
+  "sample_start",
   "sample_length",
   "sample_mode",
   "sample",
@@ -134,7 +135,7 @@ function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
   self.min_live_buffer_length = min_live_buffer_length or 0.1
-  self.max_live_buffer_length = max_live_buffer_length or 85
+  self.max_live_buffer_length = max_live_buffer_length or 80
   
 end
 
@@ -195,8 +196,9 @@ function e:rebuild_params()
 end
 
 function e:load_file(voice,scene,file)
+  local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
-  engine.read(voice,file,sample_length)
+  engine.read(voice,file,sample_start,sample_length)
   local mix_live_rec = params:get(voice.."mix_live_rec")
   if mix_live_rec == 1 then
     softcut.rec_level(voice,0)
@@ -207,8 +209,9 @@ function e:load_file(voice,scene,file)
 end
 
 function e:granulate_live(voice)
+  local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
-  osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_length})
+  osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_start, sample_length})
   local mix_live_rec = params:get(voice.."mix_live_rec")
   if mix_live_rec == 1 then
     local live_rec_level = params:get(voice.."live_rec_level")
@@ -258,13 +261,16 @@ function e:setup_params()
       scene=scene and scene or 1
       e:update_scene(i,scene)
     end)
-    params:add_control(i.."sample_length","sample length",controlspec.new(1,self.max_live_buffer_length,"exp",0.1,10,"s",0.1/self.max_live_buffer_length))
-    params:set_action(i.."sample_length",function(value)
+    params:add_control(i.."sample_start","sample start",controlspec.new(0,self.max_live_buffer_length,"lin",0.01,0,"s",0.01/self.max_live_buffer_length))
+    params:set_action(i.."sample_start",function(value)
+      if value + params:get(i.."sample_length") > self.max_live_buffer_length then 
+        params:set(i.."sample_start", self.max_live_buffer_length - params:get(i.."sample_length"))
+      end
       local function callback_func()
         if params:get(i.."sample_mode") > 1 then
-          -- self:granulate_live(i)
+          local sample_start = params:get(i.."sample_start")
           local sample_length = params:get(i.."sample_length")
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_length",{i-1, sample_length})
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start, sample_length})
         end
         
         if params:get(i.."sample_mode") == 3 then
@@ -272,12 +278,31 @@ function e:setup_params()
           on_eglut_file_loaded(i)
         end
       end
-      callback_func()
-      -- clock.run(enc_debouncer,callback_func,0.1)        
+      -- callback_func()
+      clock.run(enc_debouncer,callback_func,0.1)        
     end)
-
+    -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_live_buffer_length,"exp",0.1,10,"s",0.1/self.max_live_buffer_length))
+    params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_live_buffer_length,"lin",0.1,10,"s",0.01/self.max_live_buffer_length))
+    params:set_action(i.."sample_length",function(value)
+      if value + params:get(i.."sample_start") > self.max_live_buffer_length then 
+        params:set(i.."sample_length", self.max_live_buffer_length - params:get(i.."sample_start"))
+      end
+      local function callback_func()
+        if params:get(i.."sample_mode") > 1 then
+          local sample_start = params:get(i.."sample_start")
+          local sample_length = params:get(i.."sample_length")
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start, sample_length})        end
+        
+        if params:get(i.."sample_mode") == 3 then
+          -- set_sample_duration(i,)
+          on_eglut_file_loaded(i)
+        end
+      end
+      -- callback_func()
+      clock.run(enc_debouncer,callback_func,0.1)        
+    end)
     local sample_modes={"off","live stream","recorded"}
-    params:add_option(i.."sample_mode","sample mode",sample_modes,1)
+    params:add_option(i.."sample_mode","sample mode",sample_modes,i==1 and 2 or 1)
     params:set_action(i.."sample_mode",function(mode)
       local function callback_func()
         if sample_modes[mode]=="off" then
@@ -297,8 +322,8 @@ function e:setup_params()
           end
         end
       end
-      callback_func()
-      -- clock.run(enc_debouncer,callback_func,0.2)
+      -- callback_func()
+      clock.run(enc_debouncer,callback_func,0.2)
     end)
     params:add_file(i.."sample","sample")
     params:set_action(i.."sample",function(file)
@@ -326,7 +351,7 @@ function e:setup_params()
 
     params:add_separator(i.."grain_params","param values")
     for scene=1,e.num_scenes do
-      params:add_option(i.."play"..scene,"play",{"off","on"},1)
+      params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 
         if params:get(i.."sample_mode") > 1 then
           engine.gate(i,x-1) 
@@ -488,7 +513,7 @@ function e:setup_params()
     end
   end)
 
-  params:add_group("echo",(8*e.num_scenes)+2)
+  params:add_group("echo",(8*e.num_scenes)+1)
   params:add_option("echoscene","echo scene",e.scene_labels,1)
   params:set_action("echoscene",function(scene)
     for _,param_name in ipairs(e.param_list_echo) do

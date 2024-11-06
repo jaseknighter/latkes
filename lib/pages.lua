@@ -18,7 +18,7 @@ function pages:init(args)
   self.p1ui.selected_voice=1
   self.p1ui.selected_scene=1
   self.p1ui.prev_scenes = {1,1,1,1}
-  self.p1ui.ui_areas = {"mode","voice","scene","sample_length"}
+  self.p1ui.ui_areas = {"mode","voice","scene","sample_start","sample_length"}
   self.p1ui.num_ui_areas=#self.p1ui.ui_areas
   self.p1ui.selected_ui_area=self.p1ui.ui_areas[self.p1ui.selected_ui_area_ix]      
   
@@ -187,6 +187,9 @@ function pages:enc(n,d)
         params:set("rec_scene"..voice,selected_scene)
         self.p1ui.selected_scene = selected_scene
         params:set("active_scene",self.p1ui.selected_scene)
+      elseif self.p1ui.selected_ui_area=="sample_start" then
+        voice = self.p1ui.selected_voice
+        params:delta(voice.."sample_start",d)
       elseif self.p1ui.selected_ui_area=="sample_length" then
         voice = self.p1ui.selected_voice
         params:delta(voice.."sample_length",d)
@@ -390,20 +393,36 @@ function pages:redraw(page_num, show_sig_positions)
     screen.level(10)  
     screen.move(self.composition_left,self.composition_bottom+7)
     screen.line_rel(self.composition_right-self.composition_left,0)
-
-    local sample_length_selected = self.p1ui.selected_ui_area_ix==4
+    screen.stroke()
     
-    screen.level(sample_length_selected and 15 or 5)  
-    -- local sample_used = params:get(self.p1ui.selected_voice.."sample_length")/
+    
+    local sample_start_selected = self.p1ui.selected_ui_area_ix==4
+    local sample_length_selected = self.p1ui.selected_ui_area_ix==5    
+    local sample_start = (params:get(voice.."sample_start"))/max_live_buffer_length
     local sample_length = (params:get(voice.."sample_length"))/max_live_buffer_length
-    screen.rect(self.composition_left,self.composition_bottom+5,(self.composition_right-self.composition_left)*sample_length,4)
-
-    if sample_length_selected then
+    
+    local start_pos = self.composition_left + ((self.composition_right-self.composition_left)*sample_start)
+    local end_pos = (self.composition_right-self.composition_left)*sample_length
+    screen.level(sample_length_selected and 15 or 5)  
+    screen.rect(start_pos,self.composition_bottom+5,end_pos,4)
+    screen.stroke()
+    
+    screen.level(5)  
+    screen.move(self.composition_left,self.composition_top-4)
+    if sample_start_selected then
+      screen.level(15)  
+      label = "sample start"
+      label = label .. ": " .. util.round(sample_start * max_live_buffer_length,0.01)
+      screen.text(label)
+      screen.move(start_pos,self.composition_bottom+4)
+      screen.line_rel(0,5)
+    elseif sample_length_selected then
+      screen.level(15)  
       label = "sample length"
-      label = label .. ": " .. util.round(sample_length * max_live_buffer_length,0.2)
-      screen.move(self.composition_left,self.composition_top-4)
+      label = label .. ": " .. util.round(sample_length * max_live_buffer_length,0.01)
       screen.text(label)
     end
+    screen.stroke()
   elseif page_num == 2 then
         
     -- draw reflector separators, labels, and animated bars
