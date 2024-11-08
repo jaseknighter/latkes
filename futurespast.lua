@@ -66,6 +66,8 @@ local composition_right = 127-16
 local num_voices = 4
 local num_scenes = 4
 
+active_positions = {}
+
 voice1scene1_cc_channel = 1
 voice1scene2_cc_channel = 2
 voice1scene3_cc_channel = 3
@@ -98,8 +100,8 @@ local reflection_data_path=data_path.."reflectors/"
 buffer_loop_points = {}
 for i=1,num_voices do
   buffer_loop_points[i] = {}
-  buffer_loop_points[i].last_loop_start = nil
-  buffer_loop_points[i].last_loop_end = nil
+  buffer_loop_points[i].last_loop_start = 0
+  buffer_loop_points[i].last_loop_end = 10
 end
 max_live_buffer_length = 80
 enc_debouncing = false
@@ -115,17 +117,19 @@ function show_waveform(waveform_name)
 end
 
 function waveform_render_queue_add(waveform_name, waveform_path,voice)
+  local active_voice = params:get("active_voice")
   if #waveform_render_queue>0 then
     print("waveform_render_queue_add",waveform_name, waveform_path)
     table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
   else
-    print("load and display waveform!!!",waveform_name, waveform_path)
     table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
     local last_loop_start = buffer_loop_points[active_voice]["last_loop_start"]
     local last_loop_end = buffer_loop_points[active_voice]["last_loop_end"]
+    print("load and display waveform!!!",inited,waveform_name, waveform_path,last_loop_start,last_loop_end)
     render_softcut_buffer(1,last_loop_start,last_loop_end,128)
   end    
 end
+
 
 function render_softcut_buffer(buffer,winstart,winend,samples)
   if winstart and winend then
@@ -144,6 +148,7 @@ function on_waveform_render(ch, start, i, s)
   if is_gran_live then
     -- print("granlive:on_waveform_render", ch, start, i, s)
     set_waveform_samples(ch, start, i, s, waveform_name)
+    find_record_head(s)
   elseif waveform_render_queue and waveform_render_queue[1] then
     local waveform_name=waveform_render_queue[1].name
     set_waveform_samples(ch, start, i, s, waveform_name)
@@ -166,6 +171,30 @@ end
 function get_active_waveform()
   return waveforms[waveform_names[params:get("show_waveform")]]
 end
+
+local previous_sample_snapshot = nil
+local rec_head_pos = 0
+
+function get_rec_head_pos()
+  print("rec_head_pos: ", rec_head_pos)
+  return rec_head_pos
+end
+function find_record_head(samples)
+  if samples ~= nil and previous_sample_snapshot ~= nil then
+    for i,s in ipairs(samples) do
+      if s ~= previous_sample_snapshot[i] then
+        rec_head_pos = i/(#samples)
+        
+        -- print("rec head found at",i,#samples)
+        -- local sample_start = params:get("1sample_start")
+        -- local sample_length = params:get("1sample_length")
+        -- osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})
+      end
+    end
+  end
+  previous_sample_snapshot = samples
+end
+
 
 function set_waveform_samples(ch, start, i, s, waveform_name)
   -- local waveform_name=waveform_names[params:get("show_waveform")]
@@ -212,6 +241,7 @@ function osc.event(path,args,from)
       local active_play = params:get(active_voice.."play"..active_scene)
       -- print(voice==active_voice,voice,active_voice,active_scene,active_mode,active_play)
       if voice == active_voice then
+        active_positions = args
         if active_mode > 1 and active_play > 1 then
           waveform_active_play[voice] = true
         else
@@ -798,8 +828,10 @@ function softcut_init()
   local pre = 0.0
   
   level = 1.0
-  -- set softcut mixer level to -inf
+  -- set softcut mixer and engine input levels to -inf and adc input to 0
   params:set("softcut_level",-inf)
+  params:set("cut_input_eng",-inf)
+  params:set("cut_input_adc",0)
     -- send audio input to softcut input
 	audio.level_adc_cut(1)
   softcut.buffer_clear()
@@ -882,12 +914,13 @@ function init()
       local loop_end = params:get(active_voice  .. "sample_length") + loop_start
       local last_loop_start = buffer_loop_points[active_voice]["last_loop_start"]
       local last_loop_end = buffer_loop_points[active_voice]["last_loop_end"]
+      -- print("last_loop_start, loop_start",last_loop_start, loop_start)
+      buffer_loop_points[active_voice]["last_loop_start"] = loop_start
+      buffer_loop_points[active_voice]["last_loop_end"] = loop_end
       if last_loop_start ~= loop_start or last_loop_end ~= loop_end then 
         local active_voice_offset = (active_voice-1) * max_live_buffer_length
         softcut.loop_start(active_voice,loop_start+active_voice_offset)
         softcut.loop_end(active_voice,loop_end+active_voice_offset) --voice,duration
-        buffer_loop_points[active_voice]["last_loop_start"] = loop_start
-        buffer_loop_points[active_voice]["last_loop_end"] = loop_end
       end
       render_softcut_buffer(1,loop_start,loop_end,128)
     end

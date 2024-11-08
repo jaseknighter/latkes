@@ -270,7 +270,10 @@ function e:setup_params()
         if params:get(i.."sample_mode") > 1 then
           local sample_start = params:get(i.."sample_start")
           local sample_length = params:get(i.."sample_length")
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start, sample_length})
+          local rec_head_pos = get_rec_head_pos()
+          -- local pos = params:get(i..)
+          -- if i==active_voice
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})
         end
         
         if params:get(i.."sample_mode") == 3 then
@@ -291,7 +294,9 @@ function e:setup_params()
         if params:get(i.."sample_mode") > 1 then
           local sample_start = params:get(i.."sample_start")
           local sample_length = params:get(i.."sample_length")
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start, sample_length})        end
+          local rec_head_pos = get_rec_head_pos()
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})            
+        end
         
         if params:get(i.."sample_mode") == 3 then
           -- set_sample_duration(i,)
@@ -307,6 +312,7 @@ function e:setup_params()
       local function callback_func()
         if sample_modes[mode]=="off" then
           params:set(i.."play"..params:get(i.."scene"),1)
+          print("off",i,params:get(i.."scene"))
         elseif sample_modes[mode]=="live stream" then
           -- params:set(i.."play"..params:get(i.."scene"),1)
           params:set(i.."play"..params:get(i.."scene"),2)

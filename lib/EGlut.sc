@@ -34,22 +34,22 @@ EGlut {
 	}
 
 	// read from an existing buffer into the granulation buffsers
-	setBufStartEnd { arg voice, buf, mode,sample_start, sample_length;
+	setBufStartEnd { arg voice, buf, mode,sample_start, sample_length, rec_phase;
     var start = sample_start/max_buffer_length;
     var end = (sample_start + sample_length)/max_buffer_length;
-    var rec_phase=rec_phases[voice].getSynchronous;
-
+    // var rec_phase=rec_phases[voice].getSynchronous;
+    // (["rec_phase new/current",rec_phase,rec_phases[voice].getSynchronous]).postln;
     recorders[voice].set(
       \buf_pos_start, start, 
       \buf_pos_end, end,  
       \pos,rec_phase,
-      // \t_reset_pos, 1
+      \t_reset_pos, 1
     );
     recorders[voice + ngvoices].set(
       \buf_pos_start, start, 
       \buf_pos_end, end,  
       \pos,rec_phase,
-      // \t_reset_pos, 1
+      \t_reset_pos, 1
     );
     
     gvoices[voice].set(\buf_pos_start, start);
@@ -150,17 +150,31 @@ EGlut {
       var sig=SoundIn.ar(in);
       var rec_buf_reset = Impulse.kr(
             freq:((buf_pos_end-buf_pos_start)*max_buffer_length).reciprocal,
-            phase:t_reset_pos
+            phase:pos
           );
       var recording_offset = buf_pos_start*max_buffer_length*SampleRate.ir;
+      
+      // var ff=ToggleFF.kr(rec_buf_reset);
+      // (voice < 1 * ff).poll;
+      
       buf_dur = BufDur.kr(buf);
-      buf_pos = Phasor.kr(trig: t_reset_pos + rec_buf_reset,
+      // buf_pos = Phasor.kr(trig: t_reset_pos + rec_buf_reset,
+      buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
         start:buf_pos_start, end:buf_pos_end, resetPos: pos);
+
+      RecordBuf.ar(sig, buf, offset: recording_offset + (t_reset_pos * pos), 
+                   recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, 
+                   trigger: t_reset_pos + rec_buf_reset, doneAction: 0);
+                  //  trigger: rec_buf_reset, doneAction: 0);
+
       
+      // (voice < 1 * t_reset_pos).poll;
+      // (voice < 1 * pos).poll;
       // (voice < 1 * pos).poll;
       // (buf_pos).poll;
       // (voice < 1 * buf_pos_start*max_buffer_length).poll;
+      // (voice < 1 * buf_pos).poll;
       // (voice < 1 * buf_pos*max_buffer_length).poll;
       // (voice < 1 * (((buf_pos_end-buf_pos_start)*max_buffer_length).reciprocal)).poll;
       // (voice < 1 * rec_buf_reset).poll;
@@ -169,7 +183,6 @@ EGlut {
       // (voice < 1 * buf_pos_end).poll;
 
 
-      RecordBuf.ar(sig, buf, offset: recording_offset, recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, trigger: t_reset_pos + rec_buf_reset, doneAction: 0);
 
       SendReply.kr(Impulse.kr(30), "/eglut_rec_phases", [voice,buf_pos]);
 
@@ -1034,8 +1047,9 @@ EGlut {
         var voice=msg[1];
         var sample_start=msg[2];
         var sample_length=msg[3];
+        var rec_phase=msg[4];
         // (["recorders set sample_start,sample_length: ", sample_start, sample_length]).postln;
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
 
 
       },"/sc_osc/set_sample_position");
@@ -1046,10 +1060,11 @@ EGlut {
         var voice=msg[1];
         var sample_start=msg[2];
         var sample_length=msg[3];
+        var rec_phase=msg[4];
         
         gvoices[voice].set(\buf, live_buffers[voice]);
         gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
       },"/sc_osc/granulate_live");
     );   
 
@@ -1058,6 +1073,7 @@ EGlut {
     OSCdef(\eglut_rec_phases, {|msg| 
       var voice = msg[3];
       var rec_phase = msg[4];
+      // if (voice < 1,{ (["eglut_rec_phases 0",rec_phase]).postln; });
       rec_phases[voice].setnAt(voice, [rec_phase]);
       gvoices[voice].set(\rec_phase,rec_phase);
     }, "/eglut_rec_phases");
