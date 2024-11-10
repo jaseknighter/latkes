@@ -798,7 +798,7 @@ EGlut {
       // sig = CombL.ar(in: sig, maxechotime: 1, echotime: 0.01, decaytime: damp, mul: 1.0, add: 0.0);
       // sig = CombL.ar(in: sig, maxechotime: 1, echotime: echoTime, decaytime: damp, mul: 1.0, add: 0.0);
 
-      // sig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
+      sig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
       Out.ar(out, sig * 4 * echoVol);
       
     }).add;

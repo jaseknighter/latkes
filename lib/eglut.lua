@@ -9,8 +9,9 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
 
-e.start_scene_params_at = 9
+e.start_scene_params_at = 10
 e.param_list={
+  "voice_params",
   "sample_start",
   "sample_length",
   "sample_mode",
@@ -18,7 +19,7 @@ e.param_list={
   "live_rec_level",
   "live_pre_level",
   "mix_live_rec",
-  "grain_params",
+  "scene_params",
   "play",
   "volume","send","ptr_delay","speed","seek",
   "size",
@@ -256,6 +257,7 @@ function e:setup_params()
   ------------------- per voice params -------------------
   for i=1,e.num_voices do
     params:add_group("voice "..i,((#e.param_list-e.start_scene_params_at)*e.num_scenes))
+    params:add_separator(i.."voice_params","voice params")
     params:add_option(i.."scene","scene",e.scene_labels,1)
     params:set_action(i.."scene",function(scene)
       scene=scene and scene or 1
@@ -355,7 +357,7 @@ function e:setup_params()
   
     ------------------- per scene params -------------------
 
-    params:add_separator(i.."grain_params","param values")
+    params:add_separator(i.."scene_params","scene params")
     for scene=1,e.num_scenes do
       params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 

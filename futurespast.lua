@@ -16,6 +16,7 @@
 -- all reflection length to be modified `reflection.set_length (beats)`
 -- fix waveform rendering
 -- fix remaining pops and clicks (so size jitter params can be enabled)
+-- if auto loop is off but auto play is on, after recording, a gesture won't play automatically
 -- ????????what is the sync_waveform param doing??????
 -- move softcut code out of eglut.lua
 -- move lua osc events that belong in eglut.lua into that file 
@@ -343,7 +344,7 @@ end
 -- reflection stuff start
 -- reflection code from @alanza (https://llllllll.co/t/low-pixel-piano/65705/2)
 ---------------------------------------------------
-local reflector_scene_labels={'i','ii','iii','iv'}
+local reflector_scene_labels={'a','b','c','d'}
 eglut_params={}
 local max_reflectors_per_scene=8
 reflector_process_data={}
