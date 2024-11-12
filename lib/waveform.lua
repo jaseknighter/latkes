@@ -8,34 +8,27 @@ function Waveform:new(args)
   for k,v in pairs(args) do
     wf[k]=v
   end
+  self.samples = {}
   return wf
 end
 
 function Waveform.load(voice,path,sample_start,sample_length)
-  if path ~= "" then
-    local ch, samples = audio.file_info(path)
-    print("waveform.load",voice,path,sample_start,sample_length,ch,samples)
-    softcut.buffer_read_mono(path, 0, 1, -1, 1, 1, 0, 1)
-    clock.run(function()
-      clock.sleep(0.1)
-      if ch > 0 and samples > 0 then
-        -- softcut.buffer_clear()
-        local total_sample_len = (samples / 48000)
-        local waveform_start = sample_start or 1
-        local waveform_end = sample_length and sample_length or total_sample_len
-        -- local waveform_end = max_len and math.min(max_len,len) or len
-        -- softcut.position(i,1)
-        softcut.render_buffer(1, waveform_start, waveform_end, 127)
-      end
-    end)
-  else
-    print("not a sound file")
-  end
 
 end
 
-function Waveform:set_samples(samples)
-  self.samples = samples
+function Waveform:set_samples(offset, padding, waveform_blob)
+  for i = 1, string.len(waveform_blob) - padding do    
+    local value = string.byte(string.sub(waveform_blob, i, i + 1))
+    value = util.linlin(0, 126, -1, 1, value)
+    
+    local frame_index = math.ceil(i / 2) + offset
+    if i % 2 > 0 then
+      self.samples[frame_index] = {}
+      self.samples[frame_index][1] = value -- Min
+    else
+      self.samples[frame_index][2] = value -- Max
+    end
+  end
 end
 
 function Waveform:get_samples()
@@ -84,10 +77,12 @@ function Waveform:display_waveform()
   screen.level(screen_level)
   local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
   for i,s in ipairs(self.samples) do
-    local height = util.round(math.abs(s) * ((self.composition_top-self.composition_bottom)))
+    local height = util.round(math.abs(s[2]) * ((self.composition_top-self.composition_bottom)))
     screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos), center - (height/2))
     screen.line_rel(0, height)
-    x_pos = x_pos + 1
+    screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos+1), center - (height/2))
+    screen.line_rel(0, height)
+    x_pos = x_pos + 2
   end
   screen.stroke()
 end
@@ -97,8 +92,9 @@ function Waveform:redraw(sigs_pos, highlight_sig_positions)
     do return end
   end
 
-  self:display_waveform()
-
+  if redraw_waveform then 
+    self:display_waveform()
+  end
 
   --show signal(s) positions
   if sigs_pos then

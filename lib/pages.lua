@@ -115,17 +115,6 @@ function pages:get_active_reflector_button()
   return active_reflector_button
 end
 
-function pages.update_waveform_display(voice)
-  local active_mode = params:get(voice.."sample_mode")
-  local waveform_ix
-  if active_mode < 3 then
-    waveform_ix = voice+(voice-1)
-    params:set("show_waveform",waveform_ix)
-  else
-    waveform_ix = voice+voice
-    params:set("show_waveform",waveform_ix)
-  end
-end
 
 function pages:set_selected_ui_area(ix)
   local active_page = params:get("active_page")
@@ -306,9 +295,6 @@ function pages:enc(n,d)
       end
     end
   end
-  if params:get("sync_waveform") == 2 then
-    self.update_waveform_display(params:get("active_voice"))
-  end
 end
 
 function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
@@ -367,27 +353,23 @@ function pages:redraw(page_num, show_sig_positions)
   self:display_frame()
   local ui_area = self:get_active_ui_area()
   local voice, scene = self:get_selected_ui_elements()
-  
   -- draw sample mode, voice, and scene ui boxes
   self:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   if page_num == 1 then
-
+    
     -- draw waveforms
-    local show_waveform_name
-    local show_waveform_ix = params:get("show_waveform")
-    show_waveform_name = waveform_names[show_waveform_ix]
+    local sample_mode = params:get(voice.."sample_mode")
+    local show_waveform_ix = sample_mode < 3 and (voice * 2 - 1) or (voice * 2)
+    local show_waveform_name = waveform_names[show_waveform_ix]
     local show_waveform = waveforms[show_waveform_name]:get_samples()~=nil
     if show_waveform then
       local sig_positions, highlight_sig_positions
-      -- local voice=math.ceil((show_waveform_ix)/eglut.num_voices)
-      local voice=params:get("active_voice")
       if show_sig_positions[voice] then
         highlight_sig_positions = true
       else
         highlight_sig_positions = false
       end
       sig_positions=waveform_sig_positions[voice.."granulated"]
-      -- print(waveform_sig_positions[voice.."granulated"],voice)
       waveforms[show_waveform_name]:redraw(sig_positions,highlight_sig_positions)
     end
     screen.level(10)  

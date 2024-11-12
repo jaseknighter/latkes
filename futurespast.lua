@@ -17,8 +17,6 @@
 -- fix waveform rendering
 -- fix remaining pops and clicks (so size jitter params can be enabled)
 -- if auto loop is off but auto play is on, after recording, a gesture won't play automatically
--- ????????what is the sync_waveform param doing??????
--- move softcut code out of eglut.lua
 -- move lua osc events that belong in eglut.lua into that file 
 -- !!!!! changing active scene in a voice affects all voices
 -- !!!!! param hiding broken when selecting voice 4
@@ -62,7 +60,7 @@ local inited=false
 composition_top = 20
 local composition_bottom = 64-10
 composition_left = 23--16
-local composition_right = 127-16
+local composition_right = 127-20
 
 local num_voices = 4
 local num_scenes = 4
@@ -90,9 +88,8 @@ waveforms = {}
 waveform_names = {}
 waveform_sig_positions = {}
 composition_slice_positions = {}
-waveform_render_queue={}
 local waveform_active_play = {}
--- local waveform_rendering=false
+redraw_waveform = false
 
 local audio_path = _path.audio..norns.state.name.."/"
 local data_path=_path.data..norns.state.name.."/"
@@ -109,104 +106,14 @@ enc_debouncing = false
 --------------------------
 -- waveform rendering
 --------------------------
-function show_waveform(waveform_name)
-  for i=1,#waveform_names do
-    if waveform_name==waveform_names[i] and waveform_names[i].waveform_samples then
-      params:set("show_waveform",i)
-    end
-  end
-end
 
-function waveform_render_queue_add(waveform_name, waveform_path,voice)
-  local active_voice = params:get("active_voice")
-  if #waveform_render_queue>0 then
-    print("waveform_render_queue_add",waveform_name, waveform_path)
-    table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
-  else
-    table.insert(waveform_render_queue,{name=waveform_name, path=waveform_path, voice=voice})
-    local last_loop_start = buffer_loop_points[active_voice]["last_loop_start"]
-    local last_loop_end = buffer_loop_points[active_voice]["last_loop_end"]
-    print("load and display waveform!!!",inited,waveform_name, waveform_path,last_loop_start,last_loop_end)
-    render_softcut_buffer(1,last_loop_start,last_loop_end,128)
-  end    
-end
-
-
-function render_softcut_buffer(buffer,winstart,winend,samples)
-  if winstart and winend then
-    local active_voice = params:get("active_voice")
-    local active_voice_offset = (active_voice-1) * max_live_buffer_length
-    winstart = winstart+active_voice_offset
-    winend = winend+active_voice_offset
-    -- print("render_softcut_buffer",buffer,winstart,winend,samples)
-    softcut.render_buffer(buffer, winstart, winend - winstart, samples)
-  end
-end
-
-function on_waveform_render(ch, start, i, s)
-  local waveform_name=waveform_names[params:get("show_waveform")]
-  local is_gran_live = string.sub(waveform_name,-9)=="gran-live"
-  if is_gran_live then
-    -- print("granlive:on_waveform_render", ch, start, i, s)
-    set_waveform_samples(ch, start, i, s, waveform_name)
-    find_record_head(s)
-  elseif waveform_render_queue and waveform_render_queue[1] then
-    local waveform_name=waveform_render_queue[1].name
-    set_waveform_samples(ch, start, i, s, waveform_name)
-    print("granrec:on_waveform_render", #waveform_render_queue, ch, start, i, s)
-    if #waveform_render_queue>0 then
-      local next_waveform_name=waveform_render_queue[1].name
-      local next_waveform_path=waveform_render_queue[1].path
-      local next_waveform_voice=waveform_render_queue[1].voice
-      local render_start = params:get(next_waveform_voice.."sample_start")
-      local render_length = params:get(next_waveform_voice.."sample_length")
-      print("call waveform load",next_waveform_voice,render_start,render_length)
-      waveforms[next_waveform_name].load(next_waveform_voice,next_waveform_path,render_start,render_length)
-    else
-      print(#waveform_render_queue)
-    end
-    table.remove(waveform_render_queue,1)
-  end
-end
-
-function get_active_waveform()
-  return waveforms[waveform_names[params:get("show_waveform")]]
-end
-
-local previous_sample_snapshot = nil
-local rec_head_pos = 0
-
-function get_rec_head_pos()
-  print("rec_head_pos: ", rec_head_pos)
-  return rec_head_pos
-end
-function find_record_head(samples)
-  if samples ~= nil and previous_sample_snapshot ~= nil then
-    for i,s in ipairs(samples) do
-      if s ~= previous_sample_snapshot[i] then
-        rec_head_pos = i/(#samples)
-        
-        -- print("rec head found at",i,#samples)
-        -- local sample_start = params:get("1sample_start")
-        -- local sample_length = params:get("1sample_length")
-        -- osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})
-      end
-    end
-  end
-  previous_sample_snapshot = samples
-end
-
-
-function set_waveform_samples(ch, start, i, s, waveform_name)
-  -- local waveform_name=waveform_names[params:get("show_waveform")]
-  if waveform_name and string.sub(waveform_name,-8) == "gran-rec" then
-    waveforms[waveform_name]:set_samples(s)
-  else
-    for i=1,eglut.num_voices do
-      waveforms[i.."gran-live"]:set_samples(s)
-    end
-  end
-  screen_dirty = true
+local function store_waveform(voice, sample_mode, offset, padding, waveform_blob)
+  local waveform_ix = sample_mode < 3 and (voice * 2 - 1) or (voice * 2)
+  local waveform_name = waveform_names[waveform_ix]
+  waveforms[waveform_name]:set_samples(offset, padding, waveform_blob)
+  
+  redraw_waveform = true
+  -- Timber.waveform_changed_callback(id)
 end
 
 --------------------------
@@ -214,24 +121,18 @@ end
 --------------------------
 local script_osc_event = osc.event
 
-function load_recording_waveform(voice)
-  local function callback_func()
-    local file = params:get(voice.."sample")
-    waveform_render_queue_add(voice.."gran-rec",file,voice)  
-    
-  end
-  -- clock.run(enc_debouncer,callback_func,0.1)
-  callback_func()
-end
 
 function on_eglut_file_loaded(voice)
-  load_recording_waveform(voice)
+  print("on eglut file loaded")
 end
 
 function osc.event(path,args,from)
   if script_osc_event then script_osc_event(path,args,from) end
   
-  if path == "/lua_eglut/grain_sig_pos" then
+  if path == "/lua_eglut/engine_waveform" then
+    --args: voice, sample_mode, offset, padding, waveform
+    store_waveform(args[1]+1, args[2]+1, args[3], args[4], args[5]);
+  elseif path == "/lua_eglut/grain_sig_pos" then
     if inited then
       local voice=math.floor(args[1]+1)
       table.remove(args,1)
@@ -311,6 +212,7 @@ function setup_params()
     eglut:update_scene(voice,scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
+    osc.send( { "localhost", 57120 }, "/sc_eglut/set_active_voice",{x-1})
   end)
   params:add_number("active_scene","active scene",1,num_scenes,1)
   params:set_action("active_scene", function(x) 
@@ -330,9 +232,6 @@ function setup_params()
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
   end)
-  params:add_separator("waveforms")
-  params:add_option("show_waveform","show waveform",waveform_names)
-  params:add_option("sync_waveform","sync waveform+ui",{"off","on"},2)
 end
   --------------------------
   --save/load params
@@ -823,48 +722,6 @@ function get_selected_voice()
     return pages.p1ui.selected_voice
 end
 
-function softcut_init()
-  -- rate = 1.0
-  local rec = 1.0
-  local pre = 0.0
-  
-  level = 1.0
-  -- set softcut mixer and engine input levels to -inf and adc input to 0
-  params:set("softcut_level",-inf)
-  params:set("cut_input_eng",-inf)
-  params:set("cut_input_adc",0)
-    -- send audio input to softcut input
-	audio.level_adc_cut(1)
-  softcut.buffer_clear()
-  for i=1,num_voices do
-    softcut.enable(i,1)
-    softcut.buffer(i,1)
-    softcut.level(i,1.0)
-    softcut.rate(i,1.0)
-    softcut.loop(i,1)
-    local voice_offset = (i-1) * max_live_buffer_length        
-    local loop_start = params:get(get_selected_voice() .. "sample_start")+voice_offset
-    local loop_end = params:get(get_selected_voice() .. "sample_length")+voice_offset
-    softcut.loop_start(i,loop_start)
-    softcut.loop_end(i,loop_end) --voice,duration
-    softcut.position(i,loop_start)
-    softcut.play(i,1)
-
-    -- set input rec level: input channel, voice, level
-    softcut.level_input_cut(1,i,1)
-    softcut.level_input_cut(2,i,1)
-
-    -- set voice record level 
-    softcut.rec_level(i,1);
-    -- set voice pre level
-    softcut.pre_level(i,0)
-    -- set record state of voice 1 to 1
-    softcut.rec(i,1)
-  end
-  softcut.event_render(on_waveform_render)
-
-end
-
 function init()
   print(">>>>>>>init futures past<<<<<<<<")
 
@@ -894,14 +751,9 @@ function init()
   -- params:set("1play1",2)
 
   screen.aa(0)
-  softcut_init()
   
   redrawtimer = metro.init(function() 
     local active_voice, scene = pages:get_selected_ui_elements()
-
-    -- if params:get("softcut_level") > -inf then
-      -- params:set("softcut_level",-inf)
-    -- end
     
     --check to keep active scene in sync with selected scene of active voice
     if scene ~= params:get(active_voice.."scene") then
@@ -911,19 +763,6 @@ function init()
     
     if (norns.menu.status() == false) then
       if screen_dirty == true then redraw() end
-      local loop_start = params:get(active_voice  .. "sample_start")
-      local loop_end = params:get(active_voice  .. "sample_length") + loop_start
-      local last_loop_start = buffer_loop_points[active_voice]["last_loop_start"]
-      local last_loop_end = buffer_loop_points[active_voice]["last_loop_end"]
-      -- print("last_loop_start, loop_start",last_loop_start, loop_start)
-      buffer_loop_points[active_voice]["last_loop_start"] = loop_start
-      buffer_loop_points[active_voice]["last_loop_end"] = loop_end
-      if last_loop_start ~= loop_start or last_loop_end ~= loop_end then 
-        local active_voice_offset = (active_voice-1) * max_live_buffer_length
-        softcut.loop_start(active_voice,loop_start+active_voice_offset)
-        softcut.loop_end(active_voice,loop_end+active_voice_offset) --voice,duration
-      end
-      render_softcut_buffer(1,loop_start,loop_end,128)
     end
   end, 1/30, -1)
   redrawtimer:start()
@@ -1014,16 +853,6 @@ function redraw()
 end
 
 function cleanup ()
-  -- print("cleanup",redrawtimer)
-  -- os.execute("jack_connect crone:output_5 SuperCollider:in_1;")  
-  -- os.execute("jack_connect crone:output_6 SuperCollider:in_2;")
-  -- os.execute("jack_disconnect softcut:output_1 SuperCollider:in_1;")  
-  -- os.execute("jack_disconnect softcut:output_2 SuperCollider:in_2;")
-
-  -- waveform_render_queue=nil
-  -- waveforms=nil
-  softcut.event_render(nil)
-
   reflectors=nil
   -- if redrawtimer then metro.free(redrawtimer) end
   eglut:cleanup()

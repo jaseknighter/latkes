@@ -10,6 +10,7 @@ EGlut {
   var <live_buffers;
 	var <file_buffers;
 	var <gvoices;
+  var active_voice;
 	var effectBus;
 	var <phases;
 	var <rec_phases;
@@ -26,6 +27,7 @@ EGlut {
   var max_buffer_length=80;
   var max_size=5;
     
+  var waveformer;
 
 	*new {
 		arg argServer,context,eng;
@@ -42,14 +44,14 @@ EGlut {
     recorders[voice].set(
       \buf_pos_start, start, 
       \buf_pos_end, end,  
-      \pos,rec_phase,
-      \t_reset_pos, 1
+      // \pos,rec_phase,
+      // \t_reset_pos, 1
     );
     recorders[voice + ngvoices].set(
       \buf_pos_start, start, 
       \buf_pos_end, end,  
-      \pos,rec_phase,
-      \t_reset_pos, 1
+      // \pos,rec_phase,
+      // \t_reset_pos, 1
     );
     
     gvoices[voice].set(\buf_pos_start, start);
@@ -64,6 +66,7 @@ EGlut {
       var newbuf,newbuf2;
       var file, numChannels, soundfile_duration;
       var soundfile = SoundFile.new;
+      var mode = 2;
       soundfile.openRead(path.asString.standardizePath);
       numChannels = soundfile.numChannels;
       soundfile_duration = soundfile.duration;
@@ -71,7 +74,7 @@ EGlut {
       ["file read into buffer...soundfile_duration,sample_start,sample_length",soundfile_duration,sample_start, sample_length].postln;
       lua_sender.sendMsg("/lua_eglut/on_eglut_file_loaded",voice);
 
-       newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
+      newbuf = Buffer.readChannel(context.server, path, channels:[0], action:{
         arg newbuf;
         file_buffers[voice].zero;
         newbuf.copyData(file_buffers[voice]);
@@ -80,7 +83,7 @@ EGlut {
         gvoices[voice].set(\buf_pos_end, (sample_start + sample_length)/max_buffer_length);
 
         ["newbuf",voice,file_buffers[voice]].postln;
-
+        
         if (numChannels > 1,{
           "stereo file: read 2nd channel into buffer's 2nd channel".postln;
           newbuf2 = Buffer.readChannel(context.server, path, channels:[1], action:{
@@ -111,7 +114,6 @@ EGlut {
 	init {
 		arg argServer, engContext, eng;
     var thisEngine;
-
     "init eglut".postln;
     osc_funcs=Dictionary.new();
     
@@ -122,6 +124,7 @@ EGlut {
     context = engContext;
     thisEngine = eng;
 
+    
     // rec_phases=Bus.control(context.server,ngvoices*2);
     rec_phases = Array.fill(ngvoices*2, { arg i;
       Bus.control(context.server)
@@ -141,6 +144,8 @@ EGlut {
       );
     });
     
+    waveformer = Waveformer.new([live_buffers,file_buffers],[4,4]);
+
     SynthDef("live_recorder", {
       arg voice=0,out=0,in=0, 
           buf=0, rate=1,
@@ -200,6 +205,7 @@ EGlut {
 
     SynthDef("grain_synth", {
       arg voice, out, effectBus, phase_out, level_out, buf, buf2,
+      mode=0,
       gate=0, pos=0, 
       buf_pos_start=0, 
       rec_phase=0,
@@ -385,7 +391,13 @@ EGlut {
       // (voice < 1 * buf_pos_end).poll;
       SendReply.kr(Impulse.kr(30), "/eglut_sigs_pos", [voice,window_sig_pos1, window_sig_pos2, window_sig_pos3, window_sig_pos4]);
       // SendReply.kr(Impulse.kr(10), "/eglut_sigs_pos", [voice, active_sig_pos1/buf_pos_end, active_sig_pos2/buf_pos_end, active_sig_pos3/buf_pos_end, active_sig_pos4/buf_pos_end]);
-
+      
+      // (voice < 1 * mode < 2 * [mode,voice,buf_pos_start,buf_pos_end]).poll;
+      // constantly queue waveform generation if mode is "off" or "live" (but not "recorded")
+      SendReply.kr(Impulse.kr(30), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
+      // SendReply.kr(Impulse.kr((mode < 2) * 30), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
+      // SendReply.kr(Impulse.kr((mode > 1) * 5), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
+      
       sig = GrainBuf.ar(
             numChannels: 2, 
             trigger:grain_trig, 
@@ -866,7 +878,7 @@ EGlut {
 
     thisEngine.addCommand("gate", "ii", { arg msg;
       var voice = msg[1] - 1;
-      gvoices[voice].set(\gate, msg[2]);
+      gvoices[voice].set(\gate, msg[2]);      
     });
 
     thisEngine.addCommand("ptr_delay", "if", { arg msg;
@@ -1021,6 +1033,13 @@ EGlut {
 
     });
 
+    osc_funcs.put("set_active_voice",
+      OSCFunc.new({ |msg,time,addr,recvPort|
+        (["active_voice",msg[1]]).postln;
+        active_voice=msg[1];
+      },"/sc_eglut/set_active_voice");
+    );
+
     osc_funcs.put("live_rec_level",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var rec_level = msg[1];
@@ -1047,12 +1066,21 @@ EGlut {
         var voice=msg[1];
         var sample_start=msg[2];
         var sample_length=msg[3];
-        var rec_phase=msg[4];
         // (["recorders set sample_start,sample_length: ", sample_start, sample_length]).postln;
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
+        // this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
 
 
       },"/sc_osc/set_sample_position");
+    );   
+
+    osc_funcs.put("set_mode",
+      OSCFunc.new({ |msg,time,addr,recvPort|
+        var voice=msg[1];
+        var mode=msg[2]; // 0: off, 1: live, 2: recorded
+        (["set mode",voice,mode]);
+        gvoices[voice].set(\mode, mode);
+      },"/sc_osc/set_mode");
     );   
 
     osc_funcs.put("granulate_live",
@@ -1060,11 +1088,12 @@ EGlut {
         var voice=msg[1];
         var sample_start=msg[2];
         var sample_length=msg[3];
-        var rec_phase=msg[4];
-        
+        // var rec_phase=msg[4];
         gvoices[voice].set(\buf, live_buffers[voice]);
         gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
-        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
+        gvoices[voice].set(\mode, 1);
+        this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
+        // this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
       },"/sc_osc/granulate_live");
     );   
 
@@ -1078,6 +1107,19 @@ EGlut {
       gvoices[voice].set(\rec_phase,rec_phase);
     }, "/eglut_rec_phases");
 
+    OSCdef(\queue_waveform_generation, {|msg| 
+      var mode = msg[3];
+      var voice = msg[4];
+      var sample_start = msg[5];
+      var sample_length = msg[6];
+      var buf_array_ix;
+      if (mode < 2, { buf_array_ix = 0 }, { buf_array_ix = 1 });
+      if (voice == active_voice,{
+        // (["waveformer.queueWaveformGeneration",mode,live_buffers[0],buf_array_ix, mode,voice]).postln;
+        waveformer.queueWaveformGeneration(buf_array_ix,voice,sample_start,sample_length);        
+      });
+    }, "/queue_waveform_generation");
+
     OSCdef(\eglut_sigs_pos, {|msg| 
       var voice = msg[3];
       var sig_pos1 = msg[4];
@@ -1090,7 +1132,6 @@ EGlut {
         sig_pos3 != prev_sig_pos3 || 
         sig_pos4 != prev_sig_pos4, {
         lua_sender.sendMsg("/lua_eglut/grain_sig_pos",voice,sig_pos1, sig_pos2, sig_pos3, sig_pos4);
-        // ["eglut_sigs_pos",voice,sig_pos1, sig_pos2, sig_pos3, sig_pos4].postln;
       });
       prev_sig_pos1 = sig_pos1;
       prev_sig_pos2 = sig_pos2;
@@ -1104,6 +1145,7 @@ EGlut {
 
   free{
     "eglut beeeee freeeeee".postln;
+    waveformer.free();
     osc_funcs.keysValuesDo({ arg k,val;
       val.free;
     });

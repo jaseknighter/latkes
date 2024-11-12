@@ -202,7 +202,6 @@ function e:load_file(voice,scene,file)
   engine.read(voice,file,sample_start,sample_length)
   local mix_live_rec = params:get(voice.."mix_live_rec")
   if mix_live_rec == 1 then
-    softcut.rec_level(voice,0)
     osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
   end
 
@@ -216,7 +215,6 @@ function e:granulate_live(voice)
   local mix_live_rec = params:get(voice.."mix_live_rec")
   if mix_live_rec == 1 then
     local live_rec_level = params:get(voice.."live_rec_level")
-    softcut.rec_level(voice,live_rec_level)
     osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
   end
 end
@@ -272,10 +270,7 @@ function e:setup_params()
         if params:get(i.."sample_mode") > 1 then
           local sample_start = params:get(i.."sample_start")
           local sample_length = params:get(i.."sample_length")
-          local rec_head_pos = get_rec_head_pos()
-          -- local pos = params:get(i..)
-          -- if i==active_voice
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
         end
         
         if params:get(i.."sample_mode") == 3 then
@@ -296,8 +291,7 @@ function e:setup_params()
         if params:get(i.."sample_mode") > 1 then
           local sample_start = params:get(i.."sample_start")
           local sample_length = params:get(i.."sample_length")
-          local rec_head_pos = get_rec_head_pos()
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length,rec_head_pos})            
+          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
         end
         
         if params:get(i.."sample_mode") == 3 then
@@ -312,15 +306,19 @@ function e:setup_params()
     params:add_option(i.."sample_mode","sample mode",sample_modes,i==1 and 2 or 1)
     params:set_action(i.."sample_mode",function(mode)
       local function callback_func()
+        local mode_ix
         if sample_modes[mode]=="off" then
+          mode_ix = 0
           params:set(i.."play"..params:get(i.."scene"),1)
           print("off",i,params:get(i.."scene"))
         elseif sample_modes[mode]=="live stream" then
+          mode_ix = 1
           -- params:set(i.."play"..params:get(i.."scene"),1)
           params:set(i.."play"..params:get(i.."scene"),2)
           self:granulate_live(i)
         elseif sample_modes[mode]=="recorded" then
           local recorded_file = params:get(i.."sample")
+          mode_ix = 2
           if recorded_file ~= "-" then
             e:load_file(i,e.active_scenes[i],recorded_file)            
           else
@@ -329,9 +327,12 @@ function e:setup_params()
             -- params:set(i.."play"..params:get(i.."scene"),1)
           end
         end
+        osc.send( { "localhost", 57120 }, "/sc_osc/set_mode",{i-1, mode_ix})
       end
-      -- callback_func()
-      clock.run(enc_debouncer,callback_func,0.2)
+      
+      callback_func()
+      -- clock.run(enc_debouncer,callback_func,0.2)
+
     end)
     params:add_file(i.."sample","sample")
     params:set_action(i.."sample",function(file)
@@ -345,12 +346,10 @@ function e:setup_params()
     
     params:add_control(i.."live_rec_level","live rec level",controlspec.new(0,1,"lin",0.01,1))
     params:set_action(i.."live_rec_level",function(value) 
-      softcut.rec_level(i,value);
       osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{value,i-1})
     end)
     params:add_control(i.."live_pre_level","live pre level",controlspec.new(0,1,"lin",0.01,0))
     params:set_action(i.."live_pre_level",function(value) 
-      softcut.pre_level(i,value)
       osc.send( { "localhost", 57120 }, "/sc_eglut/live_pre_level",{value,i-1})
     end)
     params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
