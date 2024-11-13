@@ -85,6 +85,7 @@ voice4scene3_cc_channel = 15
 voice4scene4_cc_channel = 16
 
 waveforms = {}
+buffer_fill_amounts = {}
 waveform_names = {}
 waveform_sig_positions = {}
 composition_slice_positions = {}
@@ -101,7 +102,7 @@ for i=1,num_voices do
   buffer_loop_points[i].last_loop_start = 0
   buffer_loop_points[i].last_loop_end = 10
 end
-max_live_buffer_length = 80
+max_buffer_length = 80
 enc_debouncing = false
 --------------------------
 -- waveform rendering
@@ -111,7 +112,19 @@ local function store_waveform(voice, sample_mode, offset, padding, waveform_blob
   local waveform_ix = sample_mode < 3 and (voice * 2 - 1) or (voice * 2)
   local waveform_name = waveform_names[waveform_ix]
   waveforms[waveform_name]:set_samples(offset, padding, waveform_blob)
-  
+  --clear area of waveform samples if amount of buffer used is increasing
+  local sample_start = params:get(voice .. "sample_start")
+  local sample_length = params:get(voice .. "sample_length")
+  local pct_buffer_fill = (sample_start + sample_length)/max_buffer_length
+  if pct_buffer_fill > buffer_fill_amounts[waveform_name] then
+    print(voice,sample_mode,sample_start, sample_length, pct_buffer_fill,  buffer_fill_amounts[waveform_name])
+    print("buffer_fill_amounts for " .. waveform_name .. "to " .. pct_buffer_fill)
+    buffer_fill_amounts[waveform_name] = pct_buffer_fill
+    -- waveforms[waveform_name]:clear_samples(pct_buffer_fill)
+    osc.send( { "localhost", 57120 }, "/sc_osc/clear_samples",{
+      voice, sample_mode, pct_buffer_fill
+    })
+  end
   redraw_waveform = true
   -- Timber.waveform_changed_callback(id)
 end
@@ -123,39 +136,38 @@ local script_osc_event = osc.event
 
 
 function on_eglut_file_loaded(voice)
-  print("on eglut file loaded")
+  -- print("on eglut file loaded")
 end
 
 function osc.event(path,args,from)
-  if script_osc_event then script_osc_event(path,args,from) end
+  if inited == false then return end
+  -- elseif script_osc_event then script_osc_event(path,args,from) end
   
   if path == "/lua_eglut/engine_waveform" then
     --args: voice, sample_mode, offset, padding, waveform
     store_waveform(args[1]+1, args[2]+1, args[3], args[4], args[5]);
   elseif path == "/lua_eglut/grain_sig_pos" then
-    if inited then
-      local voice=math.floor(args[1]+1)
-      table.remove(args,1)
-      -- tab.print(args)
-      local active_voice = params:get("active_voice")
-      local active_scene = params:get("active_scene")
-      local active_mode = params:get(active_voice.."sample_mode")
-      local active_play = params:get(active_voice.."play"..active_scene)
-      -- print(voice==active_voice,voice,active_voice,active_scene,active_mode,active_play)
-      if voice == active_voice then
-        active_positions = args
-        if active_mode > 1 and active_play > 1 then
-          waveform_active_play[voice] = true
-        else
-          waveform_active_play[voice] = false
-        end
-        waveform_sig_positions[voice.."granulated"]=args
+    local voice=math.floor(args[1]+1)
+    table.remove(args,1)
+    -- tab.print(args)
+    local active_voice = params:get("active_voice")
+    local active_scene = params:get("active_scene")
+    local active_mode = params:get(active_voice.."sample_mode")
+    local active_play = params:get(active_voice.."play"..active_scene)
+    -- print(voice==active_voice,voice,active_voice,active_scene,active_mode,active_play)
+    if voice == active_voice then
+      active_positions = args
+      if active_mode > 1 and active_play > 1 then
+        waveform_active_play[voice] = true
       else
         waveform_active_play[voice] = false
-        waveform_sig_positions[voice.."granulated"] = nil
       end
-      screen_dirty = true
+      waveform_sig_positions[voice.."granulated"]=args
+    else
+      waveform_active_play[voice] = false
+      waveform_sig_positions[voice.."granulated"] = nil
     end
+    screen_dirty = true
   elseif path == "/lua_eglut/on_eglut_file_loaded" then
     local voice = args[1]+1
     local duration = args[2]
@@ -174,6 +186,18 @@ function setup_waveforms()
       composition_left=composition_left,
       composition_right=composition_right
     })
+  end
+end
+
+function setup_buffer_fill_amounts()
+  for i=1,#waveform_names do
+    -- setup variables to track when a waveform buffer needs to be cleared
+    -- (i.e., when the amount of audio recorded in the buffer changes)
+    local ix = math.ceil(i/2)
+    local sample_start = params:get(ix .. "sample_start")
+    local sample_length = params:get(ix .. "sample_length")
+    local pct_buffer_fill = (sample_start + sample_length)/max_buffer_length
+    buffer_fill_amounts[waveform_names[i]] = pct_buffer_fill
   end
 end
 
@@ -739,11 +763,12 @@ function init()
   end
   setup_waveforms()
   setup_params()
-  eglut:init(on_eglut_file_loaded, num_voices, num_scenes,min_live_buffer_length, max_live_buffer_length)
+  eglut:init(on_eglut_file_loaded, num_voices, num_scenes,min_live_buffer_length, max_buffer_length)
   eglut:setup_params()
   midi_helper:init(num_voices,num_scenes)
-
+  
   params:bang()
+  setup_buffer_fill_amounts()
 
   -- eglut:init_lattice()
   init_reflectors()

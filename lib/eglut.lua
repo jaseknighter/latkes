@@ -131,12 +131,12 @@ function e:init_lattice()
 end
 
 
-function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer_length,max_live_buffer_length)
+function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer_length,max_buffer_length)
   self.sample_selected_callback = sample_selected_callback
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
   self.min_live_buffer_length = min_live_buffer_length or 0.1
-  self.max_live_buffer_length = max_live_buffer_length or 80
+  self.max_buffer_length = max_buffer_length or 80
   
 end
 
@@ -261,17 +261,20 @@ function e:setup_params()
       scene=scene and scene or 1
       e:update_scene(i,scene)
     end)
-    params:add_control(i.."sample_start","sample start",controlspec.new(0,self.max_live_buffer_length,"lin",0.01,0,"s",0.01/self.max_live_buffer_length))
+    params:add_control(i.."sample_start","sample start",controlspec.new(0,self.max_buffer_length,"lin",0.01,0,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_start",function(value)
-      if value + params:get(i.."sample_length") > self.max_live_buffer_length then 
-        params:set(i.."sample_start", self.max_live_buffer_length - params:get(i.."sample_length"))
+      if value + params:get(i.."sample_length") > self.max_buffer_length then 
+        params:set(i.."sample_start", self.max_buffer_length - params:get(i.."sample_length"))
       end
+      -- local sample_mode = params:get(i.."sample_mode")
+      -- local show_waveform_ix = sample_mode < 3 and (i * 2 - 1) or (i * 2)
+      -- local show_waveform_name = waveform_names[show_waveform_ix]
+      -- waveforms[show_waveform_name]:clear_samples()
+  
       local function callback_func()
-        if params:get(i.."sample_mode") > 1 then
-          local sample_start = params:get(i.."sample_start")
-          local sample_length = params:get(i.."sample_length")
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
-        end
+        local sample_start = params:get(i.."sample_start")
+        local sample_length = params:get(i.."sample_length")
+        osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
         
         if params:get(i.."sample_mode") == 3 then
           -- set_sample_duration(i,)
@@ -281,18 +284,21 @@ function e:setup_params()
       -- callback_func()
       clock.run(enc_debouncer,callback_func,0.1)        
     end)
-    -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_live_buffer_length,"exp",0.1,10,"s",0.1/self.max_live_buffer_length))
-    params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_live_buffer_length,"lin",0.1,10,"s",0.01/self.max_live_buffer_length))
+    -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"exp",0.1,10,"s",0.1/self.max_buffer_length))
+    params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
-      if value + params:get(i.."sample_start") > self.max_live_buffer_length then 
-        params:set(i.."sample_length", self.max_live_buffer_length - params:get(i.."sample_start"))
+      if value + params:get(i.."sample_start") > self.max_buffer_length then 
+        params:set(i.."sample_length", self.max_buffer_length - params:get(i.."sample_start"))
       end
+      -- local sample_mode = params:get(i.."sample_mode")
+      -- local show_waveform_ix = sample_mode < 3 and (i * 2 - 1) or (i * 2)
+      -- local show_waveform_name = waveform_names[show_waveform_ix]
+      -- waveforms[show_waveform_name]:clear_samples()
+  
       local function callback_func()
-        if params:get(i.."sample_mode") > 1 then
-          local sample_start = params:get(i.."sample_start")
-          local sample_length = params:get(i.."sample_length")
-          osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
-        end
+        local sample_start = params:get(i.."sample_start")
+        local sample_length = params:get(i.."sample_length")
+        osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
         
         if params:get(i.."sample_mode") == 3 then
           -- set_sample_duration(i,)

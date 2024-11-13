@@ -144,7 +144,7 @@ EGlut {
       );
     });
     
-    waveformer = Waveformer.new([live_buffers,file_buffers],[4,4]);
+    waveformer = Waveformer.new([live_buffers,file_buffers]);
 
     SynthDef("live_recorder", {
       arg voice=0,out=0,in=0, 
@@ -394,7 +394,7 @@ EGlut {
       
       // (voice < 1 * mode < 2 * [mode,voice,buf_pos_start,buf_pos_end]).poll;
       // constantly queue waveform generation if mode is "off" or "live" (but not "recorded")
-      SendReply.kr(Impulse.kr(30), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
+      SendReply.kr(Impulse.kr(10), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
       // SendReply.kr(Impulse.kr((mode < 2) * 30), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
       // SendReply.kr(Impulse.kr((mode > 1) * 5), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
       
@@ -1069,9 +1069,16 @@ EGlut {
         // (["recorders set sample_start,sample_length: ", sample_start, sample_length]).postln;
         this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
         // this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
-
-
       },"/sc_osc/set_sample_position");
+    );   
+
+    osc_funcs.put("clear_samples",
+      OSCFunc.new({ |msg,time,addr,recvPort|
+        var voice=msg[1];
+        var sample_mode=msg[2];
+        var pct=msg[3];
+        (["clear samples",voice,sample_mode,pct]).postln;
+      },"/sc_osc/clear_samples");
     );   
 
     osc_funcs.put("set_mode",

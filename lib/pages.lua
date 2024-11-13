@@ -380,8 +380,8 @@ function pages:redraw(page_num, show_sig_positions)
     
     local sample_start_selected = self.p1ui.selected_ui_area_ix==4
     local sample_length_selected = self.p1ui.selected_ui_area_ix==5    
-    local sample_start = (params:get(voice.."sample_start"))/max_live_buffer_length
-    local sample_length = (params:get(voice.."sample_length"))/max_live_buffer_length
+    local sample_start = (params:get(voice.."sample_start"))/max_buffer_length
+    local sample_length = (params:get(voice.."sample_length"))/max_buffer_length
     
     local start_pos = self.composition_left + ((self.composition_right-self.composition_left)*sample_start)
     local end_pos = (self.composition_right-self.composition_left)*sample_length
@@ -394,14 +394,14 @@ function pages:redraw(page_num, show_sig_positions)
     if sample_start_selected then
       screen.level(15)  
       label = "sample start"
-      label = label .. ": " .. util.round(sample_start * max_live_buffer_length,0.01)
+      label = label .. ": " .. util.round(sample_start * max_buffer_length,0.01)
       screen.text(label)
       screen.move(start_pos,self.composition_bottom+4)
       screen.line_rel(0,5)
     elseif sample_length_selected then
       screen.level(15)  
       label = "sample length"
-      label = label .. ": " .. util.round(sample_length * max_live_buffer_length,0.01)
+      label = label .. ": " .. util.round(sample_length * max_buffer_length,0.01)
       screen.text(label)
     end
     screen.stroke()

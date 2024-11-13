@@ -31,6 +31,18 @@ function Waveform:set_samples(offset, padding, waveform_blob)
   end
 end
 
+function Waveform:clear_samples(clear_from)
+  if clear_from then
+    local clear_sample_from = math.floor(clear_from * #self.samples)
+    
+    for frame = clear_sample_from, #self.samples do
+      self.samples[frame] = {0,0}
+    end
+  else
+    self.samples = {}
+  end
+end
+
 function Waveform:get_samples()
   return self.samples
 end
@@ -80,9 +92,9 @@ function Waveform:display_waveform()
     local height = util.round(math.abs(s[2]) * ((self.composition_top-self.composition_bottom)))
     screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos), center - (height/2))
     screen.line_rel(0, height)
-    screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos+1), center - (height/2))
-    screen.line_rel(0, height)
-    x_pos = x_pos + 2
+    -- screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos+1), center - (height/2))
+    -- screen.line_rel(0, height)
+    x_pos = x_pos + 1
   end
   screen.stroke()
 end
