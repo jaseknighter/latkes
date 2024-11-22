@@ -243,13 +243,18 @@ EGlut {
       var reset_pos=1;
       var sig,sig2;
       var buf_pos, buf_pos2, out_of_window=0;
-      var phasor_start, phasor_end; 
+      var window_start, window_end; 
       var localin;
       var switch=0,switch1,switch2,switch3,switch4;
       var reset_sig_ix=0,crossfade;
+      var win_size, win_frames;
+      var win_trigger_size=1024;
+      var rec_phase_frame,rec_phase_win_start,rec_phase_win_end;
       
 
       pos = pos.linlin(0,1,buf_pos_start,buf_pos_end);
+      win_size = buf_pos_end - buf_pos_start;
+      win_frames = BufFrames.kr(buf);
       
       // size_jitter_sig = TRand.kr(trig: Impulse.kr(density, [0,density_phase]),
       size_jitter_sig = TRand.kr(trig: density_phasor.floor,
@@ -303,12 +308,6 @@ EGlut {
 
 
 
-      reset_pos = pos;
-
-      // modulate the start/stop
-  		phasor_start = buf_pos_start;
-  		phasor_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end);
-      
       // LocalIn collects a trigger whenever the playheads leave the buffer window.
     	localin = LocalIn.kr(1);
 
@@ -329,6 +328,10 @@ EGlut {
       reset_sig_ix = reset_sig_ix + ((reset_sig_ix < 1) * (switch4 > 0 * 4));
 
       switch = reset_sig_ix > 0;
+
+
+      // position to jump to when the synth receives a reset trigger
+      reset_pos = pos;
 
       buf_pos = Phasor.kr(trig: t_reset_pos,
         rate: buf_dur.reciprocal / ControlRate.ir * speed,
@@ -379,18 +382,6 @@ EGlut {
       active_sig_pos2 = ((switch2 < 1) * sig_pos2) + ((switch2 > 0) * sig2_pos2);
       active_sig_pos3 = ((switch3 < 1) * sig_pos3) + ((switch3 > 0) * sig2_pos3);
       active_sig_pos4 = ((switch4 < 1) * sig_pos4) + ((switch4 > 0) * sig2_pos4);
-
-      //check if the recorder position is passing over the active signal positions
-      rec_phase_trig = ((rec_phase + 0.0001 > active_sig_pos1) * (rec_phase - 0.0001 < active_sig_pos1) > 0);
-      rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos2) * (rec_phase - 0.0001 < active_sig_pos2)) > 0);
-      rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos3) * (rec_phase - 0.0001 < active_sig_pos3)) > 0);
-      rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos4) * (rec_phase - 0.0001 < active_sig_pos4)) > 0);
-      
-      //combine the position checks for out of window + the record head passing over the playheads
-      switch = (switch + rec_phase_trig) > 0;
-      SendReply.kr(switch, "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
-  		
-
       
       //calculate the signal position relative to the window of the active buffer (buf_pos_start/buf_pos_end)
       window_sig_pos1 = active_sig_pos1.linlin(buf_pos_start,buf_pos_end,0,1);
@@ -780,25 +771,79 @@ EGlut {
             mul:overtone_vol*0.3,
       );
 
+      // set the start/end points
+			// posStart = Clip.kr(LinLin.kr(posStart,0,1,0,frames),1024,frames-10240);
+			// posEnd = Clip.kr(LinLin.kr(posEnd,0,1,0,frames),posStart+1024,frames-1024);
+			
+      //create a window for the rec_phase in frames, 
+      // 1024 frames before the start of the rec_phase
+      // and 1024 frames + the size of the grains in frames after the end of the rec_phase
+      //then convert the window values to a 0-1 scale based on the length of the buffer in seconds
+      rec_phase_frame = LinLin.kr(rec_phase,0,1,0,win_frames);
+
+      rec_phase_win_start = rec_phase_frame-win_trigger_size;
+      rec_phase_win_start = Clip.kr(rec_phase_win_start,win_trigger_size,win_frames-(win_trigger_size*10));
+      
+      rec_phase_win_end = (rec_phase_frame+size+win_trigger_size);
+      rec_phase_win_end = Clip.kr(rec_phase_win_end,rec_phase_win_start+win_trigger_size,win_frames-win_trigger_size);
+      
+      rec_phase_win_start = rec_phase_win_start/max_buffer_length/BufSampleRate.kr(buf);
+      rec_phase_win_end = rec_phase_win_end/max_buffer_length/BufSampleRate.kr(buf);
+
+      //check if the recorder position is passing over the active signal positions
+      rec_phase_trig = ((rec_phase_win_start < active_sig_pos1) * (rec_phase_win_end > active_sig_pos1) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos2) * (rec_phase_win_end > active_sig_pos2)) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos3) * (rec_phase_win_end > active_sig_pos3)) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos4) * (rec_phase_win_end > active_sig_pos4)) > 0);
+      
+      // rec_phase_trig = ((rec_phase + 0.0001 > active_sig_pos1) * (rec_phase - 0.0001 < active_sig_pos1) > 0);
+      // rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos2) * (rec_phase - 0.0001 < active_sig_pos2)) > 0);
+      // rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos3) * (rec_phase - 0.0001 < active_sig_pos3)) > 0);
+      // rec_phase_trig = (rec_phase_trig + ((rec_phase + 0.0001 > active_sig_pos4) * (rec_phase - 0.0001 < active_sig_pos4)) > 0);
+      
+      //combine the position checks for out of window + the record head passing over the playheads
+      // switch = (switch + rec_phase_trig) > 0;
+      // switch = (rec_phase_trig) > 0;
+      SendReply.kr(switch, "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
+  		
       // crossfade bewteen the two sounds over 50 milliseconds
-      sig=SelectX.ar(Lag.kr(switch,0.001),[sig,sig2]);
+      sig=SelectX.ar(Lag.kr(switch,0.05),[sig,sig2]);
       // sig=SelectX.ar(Lag.kr(Changed.kr(switch),1),[sig,sig2]);
       // sig=XFade2.ar(sig, sig2, LFTri.kr(0.1) );
 
-      // ([voice < 1 * active_sig_pos1,voice < 1 * (active_sig_pos1 + 0.001 > phasor_end)]).poll;
-      // SendReply.kr(Changed.kr((active_sig_pos1 > phasor_end) + (active_sig_pos1 < phasor_start)), "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
+      // ([voice < 1 * active_sig_pos1,voice < 1 * (active_sig_pos1 + 0.001 > window_end)]).poll;
+      // SendReply.kr(Changed.kr((active_sig_pos1 > phasor_end) + (active_sig_pos1 < window_start)), "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
   		
+      //create a window in frames, slightly smaller than the current sample window
+      // so we know when the playhead leaves the sample window frame
+      // 1024 frames before the start of the rec_phase
+      // and 1024 frames + the size of the grains in frames after the end of the rec_phase
+      //then convert the window values to a 0-1 scale based on the length of the buffer in seconds
+      window_start = LinLin.kr(buf_pos_start,0,1,0,win_frames);
+      window_start = window_start+win_trigger_size;
+      window_start = Clip.kr(window_start,win_trigger_size,win_frames-(win_trigger_size*10));
       
+      window_end = LinLin.kr(buf_pos_end,0,1,0,win_frames);
+      window_end = window_end-win_trigger_size;
+      window_end = Clip.kr(window_end,window_start+win_trigger_size,win_frames-win_trigger_size);
+
+      window_start = window_start/max_buffer_length/BufSampleRate.kr(buf);
+      window_end = window_end/max_buffer_length/BufSampleRate.kr(buf);
+
+      // ([voice < 1 * active_sig_pos1,voice < 1 * window_start,voice < 1 * window_end]).poll;
+
+
+  		// window_start = buf_pos_start;
+  		// window_end = Clip.kr(buf_pos_start+buf_pos_end,0,buf_pos_end);
+      
+
       //determine if any of the four "active" playheads are outside the buffer window
-      out_of_window = ((1*((active_sig_pos1 + 0.0005 > phasor_end) + (active_sig_pos1 - 0.0005 < phasor_start))) +
-                       (10*((active_sig_pos2 + 0.0005 > phasor_end) + (active_sig_pos2 - 0.0005 < phasor_start))) +
-                       (100*((active_sig_pos3 + 0.0005 > phasor_end) + (active_sig_pos3 - 0.0005 < phasor_start))) +
-                       (1000*((active_sig_pos4 + 0.0005 > phasor_end) + (active_sig_pos4 - 0.0005 < phasor_start))));
+      out_of_window = ((1*((active_sig_pos1 > window_end) + (active_sig_pos1 < window_start))) +
+                       (10*((active_sig_pos2 > window_end) + (active_sig_pos2 < window_start))) +
+                       (100*((active_sig_pos3 > window_end) + (active_sig_pos3 < window_start))) +
+                       (1000*((active_sig_pos4 > window_end) + (active_sig_pos4 < window_start))));
 
-
-      // (voice < 1 * out_of_window).poll;
       LocalOut.kr(out_of_window);
-      // LocalOut.kr(out_of_window + rec_phase_trig >= 1);
       
       sig = BLowPass4.ar(sig, cutoff, q);
       sig = Compander.ar(sig,sig,0.25)/envscale;
@@ -809,8 +854,8 @@ EGlut {
       level = env;
       Out.ar(out, sig * level * gain);
       Out.kr(phase_out, sig_pos);
-      Out.ar(effectBus, sig * level * send );
       // ignore gain for effect and level out
+      Out.ar(effectBus, sig * level * send );
       Out.kr(level_out, level);
     }).add;
 

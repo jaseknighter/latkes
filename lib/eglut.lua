@@ -8,7 +8,7 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
-MIN_SAMPLE_LENGTH = 1
+MIN_SAMPLE_LENGTH = 0.1
 MAX_GRAIN_SIZE = 5
 e.start_scene_params_at = 10
 e.param_list={
