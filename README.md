@@ -25,12 +25,12 @@ key new features:
 * midi-controller (optional)
 
 # documentation
-* E1: switch between pages
+* E1: switch between screens
 * E2: select control
 * E3: change control
 * K1+E3: record a param (2nd page only)
 
-the script has two pages: waveform view and a gesture recorder view
+the script has two screens: waveform view and a gesture recorder view
 
 ## waveform view
 five parameters can be controlled from this view:

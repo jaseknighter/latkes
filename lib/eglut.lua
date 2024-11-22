@@ -8,7 +8,8 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
-
+MIN_SAMPLE_LENGTH = 1
+MAX_GRAIN_SIZE = 5
 e.start_scene_params_at = 10
 e.param_list={
   "voice_params",
@@ -24,11 +25,12 @@ e.param_list={
   "volume","send","ptr_delay","speed","seek",
   "size",
   -- "size_jitter","size_jitter_mult",
-  "density","density_beat_divisor","density_jitter","density_jitter_mult",
+  "density","density_beat_divisor","density_phase_sync","density_phase_sync_one_shot",
   "pitch","spread_sig",
   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
   "jitter",
   "fade","attack_level","attack_time","decay_time","env_shape",
+  -- "fade","attack_level","attack_time","decay_time","env_shape_attack","env_shape_decay",
   "cutoff","q","pan","spread_pan",
   "subharmonics","overtones",
 }
@@ -159,13 +161,11 @@ function e:bang(voice, scene, bangscope)
         local p
         if k >= e.start_scene_params_at then
           p=params:lookup_param(i..param_name..scene)
-        -- else
-        --   p=params:lookup_param(i..param_name)
+        else
+          p=params:lookup_param(i..param_name)
         end
         if p and p.t~=6 then p:bang() end
       end
-      -- local p=params:lookup_param(i.."pattern"..scene)
-      -- p:bang()
     end
   end
   if bangscope ~= 2 then
@@ -182,10 +182,21 @@ function e:get_gr_env_values(voice, scene)
   local attack_level = params:get(voice.."attack_level"..scene)
   local attack_time = params:get(voice.."attack_time"..scene)
   local decay_time = params:get(voice.."decay_time"..scene)
-  local attack_shape = params:get(voice.."env_shape"..scene)
-  local decay_shape = params:get(voice.."env_shape"..scene)
-  return {attack_level, attack_time, decay_time, attack_shape, decay_shape}
+  local shape = params:get(voice.."env_shape"..scene)
+  -- local attack_shape = params:get(voice.."env_shape_attack"..scene)
+  -- local decay_shape = params:get(voice.."env_shape_decay"..scene)
+  local size = params:get(voice.."size"..scene)
+  return {attack_level, attack_time, decay_time, shape, size}
+  -- return {attack_level, attack_time, decay_time, attack_shape, decay_shape, size}
 end
+
+local function update_grain_envelope(i,scene)
+  local function callback_func()
+    engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
+  end
+  clock.run(enc_debouncer,callback_func,0.1)
+end 
+
 
 
 -- param stuff
@@ -250,12 +261,12 @@ function e:sync_scenes(params_name, sync_all)
 end
 
 function e:setup_params()
-  params:add_separator("granular")
+  params:add_separator("voices")
   
   ------------------- per voice params -------------------
   for i=1,e.num_voices do
     params:add_group("voice "..i,((#e.param_list-e.start_scene_params_at)*e.num_scenes))
-    params:add_separator(i.."voice_params","voice params")
+    params:add_separator(i.."voice_params","per voice params")
     params:add_option(i.."scene","scene",e.scene_labels,1)
     params:set_action(i.."scene",function(scene)
       scene=scene and scene or 1
@@ -285,7 +296,7 @@ function e:setup_params()
       clock.run(enc_debouncer,callback_func,0.1)        
     end)
     -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"exp",0.1,10,"s",0.1/self.max_buffer_length))
-    params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
+    params:add_control(i.."sample_length","sample length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
       if value + params:get(i.."sample_start") > self.max_buffer_length then 
         params:set(i.."sample_length", self.max_buffer_length - params:get(i.."sample_start"))
@@ -362,7 +373,7 @@ function e:setup_params()
   
     ------------------- per scene params -------------------
 
-    params:add_separator(i.."scene_params","scene params")
+    params:add_separator(i.."scene_params","per scene params")
     for scene=1,e.num_scenes do
       params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 
@@ -373,7 +384,7 @@ function e:setup_params()
         end
       end)
 
-      params:add_control(i.."volume"..scene,"volume",controlspec.new(0,1.0,"lin",0.05,1,"vol",0.05/1))
+      params:add_control(i.."volume"..scene,"dry",controlspec.new(0,1.0,"lin",0.05,1,"",0.05/1))
       -- params:add_control(i.."volume"..scene,"volume",controlspec.new(0,1.0,"lin",0.05,0.25,"vol",0.05/1))
       params:set_action(i.."volume"..scene,function(value)
         engine.volume(i,value)
@@ -387,7 +398,7 @@ function e:setup_params()
         -- old_volume[i]=value
       end)
 
-      params:add_control(i.."send"..scene,"echo send",controlspec.new(0.0,1.0,"lin",0.01,1))
+      params:add_control(i.."send"..scene,"effect send",controlspec.new(0.0,1.0,"lin",0.01,1))
       params:set_action(i.."send"..scene,function(value) engine.send(i,value) end)
 
       params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.005,2,"lin",0.001,0.2,"",0.01/2))
@@ -398,7 +409,7 @@ function e:setup_params()
       local function speed_check(speed,voice,scene)
         -- clock.sleep(0.1)
         for i=1,#e.speed_magnets do
-          if speed ~= e.speed_magnets[i] and speed-0.05 < e.speed_magnets[i] and speed+0.05 > e.speed_magnets[i] then
+          if speed ~= e.speed_magnets[i] and speed-0.1 < e.speed_magnets[i] and speed+0.1 > e.speed_magnets[i] then
             params:set(voice.."speed"..scene,e.speed_magnets[i])
             break
           end
@@ -417,27 +428,46 @@ function e:setup_params()
       params:add_control(i.."seek"..scene,"seek",controlspec.new(0,1,"lin",0.001,0,"",0.001/1,true))
       params:set_action(i.."seek"..scene,function(value) engine.seek(i,util.clamp(value,0,1)) end)
 
-      -- params:add_control(i.."size"..scene,"size",controlspec.new(0.1,15,"exp",0.01,1,"",0.01/1))
-      params:add_control(i.."size"..scene,"size",controlspec.new(0.1,5,"exp",0.01,1,"",0.01/1))
+      -- note the size values sent to SuperCollider are  1/10 the value of the parameter
+      params:add_control(i.."size"..scene,"size",controlspec.new(0.1,MAX_GRAIN_SIZE,"exp",0.01,1,"",0.01/10))
       params:set_action(i.."size"..scene,function(value)
         local function callback_func()
-          engine.size(i,util.clamp(value*clock.get_beat_sec()/10,0.001,util.linlin(1,40,1,0.1,params:get(i.."density"..scene))))
+          local bs = clock.get_beat_sec()
+          local max_density = 40/params:get(i.."density_beat_divisor"..scene)
+          local current_density = params:get(i.."density"..scene)/params:get(i.."density_beat_divisor"..scene)
+          local max_size = util.explin(1,max_density,1,0.1,current_density)
+          engine.size(i,util.clamp(
+            (value/10)*clock.get_beat_sec(),    -- original size
+            bs*0.001,                           --min size
+            bs*max_size)                        --max size from 0.1 to 1 based on density
+          )
+          print(max_density,current_density,max_size)
         end
-        callback_func()
-        -- clock.run(enc_debouncer,callback_func,0.2)
+        -- callback_func()
+        clock.run(enc_debouncer,callback_func,0.1)
       end)
 
-      params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",1,4,"/beat",1/40))
-      params:set_action(i.."density"..scene,function(value) engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) end)
-      params:add_control(i.."density_beat_divisor"..scene,"density beat div",controlspec.new(1,16,'lin',1,4,"",1/16))
+      params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",0.1,4,"/beat",1/400))
+      params:set_action(i.."density"..scene,function(value) 
+        engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) 
+        local p=params:lookup_param(i.."size"..scene)
+        p:bang()
+      end)
+      params:add_control(i.."density_beat_divisor"..scene,"density beat div",controlspec.new(1,16,'lin',1,1,"",1/16))
       params:set_action(i.."density_beat_divisor"..scene,function() 
         local p=params:lookup_param(i.."density"..scene)
         p:bang()
       end)
-      params:add_control(i.."density_jitter"..scene,"density jitter",controlspec.new(0,1,"lin",0.1,0,"",1/100))
-      params:set_action(i.."density_jitter"..scene,function(value) engine.density_jitter(i,value*params:get(i.."density_jitter_mult"..scene)) end)
-      params:add_control(i.."density_jitter_mult"..scene,"density jitter mult",controlspec.new(1,10,"lin",1,1,"",1/10))
-      params:set_action(i.."density_jitter_mult"..scene,function(value) engine.density_jitter(i,value*params:get(i.."density_jitter"..scene)) end)
+      params:add_trigger(i.."density_phase_sync_one_shot"..scene,"density phase sync 1shot")
+      params:set_action(i.."density_phase_sync_one_shot"..scene,function() 
+        print("sync_density_phases_one_shot",i-1)
+        osc.send( { "localhost", 57120 }, "/sc_osc/sync_density_phases_one_shot",{i-1})
+      end)
+
+      params:add_option(i.."density_phase_sync"..scene,"density phase sync",{"off","on"},1)
+      params:set_action(i.."density_phase_sync"..scene,function(x)
+        osc.send( { "localhost", 57120 }, "/sc_osc/sync_density_phases",{i-1,x-1})
+      end)
       
       params:add_control(i.."pitch"..scene,"pitch",controlspec.new(-48,48,"lin",0.1,0,"note",1/960))
       params:set_action(i.."pitch"..scene,function(value) engine.pitch(i,math.pow(0.5,-value/12)) end)
@@ -460,10 +490,10 @@ function e:setup_params()
 
       params:add_taper(i.."fade"..scene,"compress",150,9000,1000,1)
       params:set_action(i.."fade"..scene,function(value) engine.envscale(i,value/1000) end)
-
+      
       params:add_control(i.."attack_level"..scene,"attack level",controlspec.new(0,1,"lin",0.01,1,"",0.01/1))
       params:set_action(i.."attack_level"..scene,function(value) 
-        engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
+        update_grain_envelope(i,scene)
       end)
 
       params:add_control(i.."attack_time"..scene,"attack time",controlspec.new(0.01,0.99,"lin",0.01,0.5,"",0.001/1))
@@ -471,7 +501,10 @@ function e:setup_params()
         if params:get(i.."decay_time"..scene) ~= 1-value then
           params:set(i.."decay_time"..scene,1-value) 
         end
-        engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
+        -- if params:get(i.."env_shape_attack"..scene)==1 and value > 0.9 then 
+        --   params:set(i.."attack_time"..scene,0.9) 
+        -- end
+        update_grain_envelope(i,scene)
       end)
       -- params:set("1attack_time1",0.4)
       params:add_control(i.."decay_time"..scene,"decay time",controlspec.new(0.01,0.99,"lin",0.01,0.5,"",0.001/1))
@@ -479,12 +512,33 @@ function e:setup_params()
         if params:get(i.."attack_time"..scene) ~= 1-value then
           params:set(i.."attack_time"..scene,1-value) 
         end
-        engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
+        update_grain_envelope(i,scene)
       end)
+      
+      -- params:add_option(i.."env_shape_attack"..scene,"env shape - attack",{"exp","squared","lin","sin","wel","cubed"},4)
+      -- params:set_action(i.."env_shape_attack"..scene,function(value) 
+      --   if value == 1 and params:get(i.."env_shape_decay"..scene)==1  then 
+      --     params:set(i.."env_shape_attack"..scene,2) 
+      --   elseif value == 1 and params:get(i.."attack_time"..scene) > 0.98 then
+      --     params:set(i.."attack_time"..scene,0.9) 
+      --     update_grain_envelope(i,scene)
+      --   else
+      --     update_grain_envelope(i,scene)
+      --   end
+      -- end)
 
-      params:add_option(i.."env_shape"..scene,"envelope shape",{"step","lin","sin","wel","squared","cubed"},4)
+      -- params:add_option(i.."env_shape_decay"..scene,"env shape - decay",{"exp","squared","lin","sin","wel","cubed"},4)
+      -- params:set_action(i.."env_shape_decay"..scene,function(value) 
+      --   if value == 1 and params:get(i.."env_shape_attack"..scene)==1 then 
+      --     params:set(i.."env_shape_decay"..scene,2) 
+      --   else
+      --     update_grain_envelope(i,scene)
+      --   end
+      -- end)
+
+      params:add_option(i.."env_shape"..scene,"env shape",{"exp","squared","lin","sin","wel","cubed"},4)
       params:set_action(i.."env_shape"..scene,function(value) 
-        engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
+        update_grain_envelope(i,scene)
       end)
     
       
@@ -492,7 +546,7 @@ function e:setup_params()
       params:add_control(i.."cutoff"..scene,"filter cutoff",controlspec.new(20,20000,"exp",0,20000,"hz"))
       params:set_action(i.."cutoff"..scene,function(value) engine.cutoff(i,value) end)
       
-      params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.01,1.0,"exp",0.01,0.1,"",0.01/1))
+      params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.01,1.0,"exp",0.01,0.2,"",0.01/1))
       params:set_action(i.."q"..scene,function(value) engine.q(i,value) end)
 
       params:add_control(i.."pan"..scene,"pan",controlspec.new(-1,1,"lin",0.01,0,"",0.01/1))
@@ -517,7 +571,10 @@ function e:setup_params()
     end
   end
 
-  params:add_control("global_send","global echo send",controlspec.new(0.0,1.0,"lin",0.01,1))
+  params:add_group("echo",(8*e.num_scenes)+3)
+  params:add_option("effects_on","echo on",{"off","on"},1)
+  params:set_action("effects_on",function(value) engine.effects_on(value) end)
+  params:add_control("global_send","global effect send",controlspec.new(0.0,1.0,"lin",0.01,1))
   params:set_action("global_send",function(value) 
     for voice=1,e.num_voices do
       for scene=1,e.num_scenes do
@@ -526,7 +583,6 @@ function e:setup_params()
     end
   end)
 
-  params:add_group("echo",(8*e.num_scenes)+1)
   params:add_option("echoscene","echo scene",e.scene_labels,1)
   params:set_action("echoscene",function(scene)
     for _,param_name in ipairs(e.param_list_echo) do

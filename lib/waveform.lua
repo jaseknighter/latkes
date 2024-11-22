@@ -47,24 +47,31 @@ function Waveform:get_samples()
   return self.samples
 end
 
-function Waveform:display_sigs_pos(sigs_pos, highlight_sig_positions)
+function Waveform:display_sigs_pos(sigs_pos, show_sig_positions, sig_size)
   --show signal position(s)
-  if #sigs_pos > 0 then
-    -- if highlight_sig_positions == true then print("highlight_sig_positions",highlight_sig_positions) end
-    if highlight_sig_positions == true then screen.level(15) else screen.level(1) end
-    -- screen.level(15)
-    screen.blend_mode(blend_mode or 11)   
+  if #sigs_pos > 0 and show_sig_positions then
+    sig_size = sig_size+1 or 2
+    screen.level(12)
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
     for i=1,#sigs_pos do
       local sig_pos = sigs_pos[i]
       -- print(sig_pos)
-      screen.blend_mode(blend_mode or 11)   
       local height = util.round(self.composition_top-self.composition_bottom+6)
       local xloc = util.linlin(1,127,self.composition_left,self.composition_right,sig_pos*127)
-      -- local xloc = util.linlin(1,127,self.composition_left,self.composition_right,math.floor(sig_pos*127))
       local yloc = center - (height/2)
-      screen.move(xloc, yloc)
-      screen.line_rel(0, height)
+      screen.blend_mode(12)  
+      -- screen.move(xloc, yloc)
+      local off_edge = math.ceil(self.composition_right - xloc)
+      if sig_size-off_edge > 0 then
+        screen.rect(xloc,yloc, off_edge, height)
+        screen.fill()
+        screen.rect(self.composition_left,yloc, sig_size - off_edge, height)
+        screen.fill()
+
+      else
+        screen.rect(xloc,yloc, sig_size, height)
+        screen.fill()
+      end
       -- screen.stroke()
     end
   end
@@ -99,7 +106,7 @@ function Waveform:display_waveform()
   screen.stroke()
 end
 
-function Waveform:redraw(sigs_pos, highlight_sig_positions)
+function Waveform:redraw(sigs_pos, show_sig_positions, sig_size)
   if self.active==false then
     do return end
   end
@@ -110,7 +117,7 @@ function Waveform:redraw(sigs_pos, highlight_sig_positions)
 
   --show signal(s) positions
   if sigs_pos then
-    self:display_sigs_pos(sigs_pos, highlight_sig_positions)
+    self:display_sigs_pos(sigs_pos, show_sig_positions, sig_size)
   end
   screen.stroke()
   screen.blend_mode(0)   

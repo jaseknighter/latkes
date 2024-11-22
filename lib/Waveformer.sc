@@ -9,7 +9,7 @@ Waveformer {
 	var loadQueue;
 	var waveformQueue;
   var waveform_queue_size = 1;
-	var waveformRoutine;
+	var <waveformRoutine;
 	var generatingWaveform = "-1"; // -1 not running
 	var abandonCurrentWaveform = false;
 
@@ -79,7 +79,6 @@ Waveformer {
 		var samplesPerSlice = 5; //1000; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
 		var sendEvery = 3;
 		var totalStartSecs = Date.getDate.rawSeconds;
-		var waveformRoutine;
 
 		generatingWaveform = buf_array_ix.asInteger.asString ++ "-" ++ waveformQueue.last.buf_ix.asInteger.asString;
 
@@ -224,7 +223,7 @@ Waveformer {
 	}
 
 	free {
-    buffers.do({ arg b; b.free; });
+    // buffers.do({ arg b; b.free; });
     loadQueue.do({ arg b; b.free; });
     waveformQueue.do({ arg b; b.free; });
 	}

@@ -2,8 +2,8 @@
 --
 -- llllllll.co/t/futurespast
 --
--- granchild's progeny
--- v0.1
+-- 
+-- v0.1_241118 (beta)
 --
 --    ▼ instructions below ▼
 -- instructions
@@ -13,24 +13,17 @@
 -- be careful when setting different filter cutoff and rq between scenes or popping can occur when switching, esp. if rq is set low
 -- 
 -- bugs/improvement ideas:
+-- why doesn't a voice play when switching from "off" to "live" and play is on??? 
+-- add grid controls (esp. for playing with pitch)
+-- fix wonky UI situations
 -- all reflection length to be modified `reflection.set_length (beats)`
--- fix waveform rendering
 -- fix remaining pops and clicks (so size jitter params can be enabled)
 -- if auto loop is off but auto play is on, after recording, a gesture won't play automatically
 -- move lua osc events that belong in eglut.lua into that file 
--- !!!!! changing active scene in a voice affects all voices
--- !!!!! param hiding broken when selecting voice 4
--- allow setting start position of each voice
--- why doesn't changing attack level make changes immediately, but requires a pause and addition value change to take effect?
+-- add labels for sample mode, voice, scene
 -- page 2
---   add labels for sample mode, voice, scene
 --   add pause play for all recorders at the voice/scene level
---   what are main "auto loop" and "auto play" params doing?
 --   
---
--- diffs from granchild:
--- grain envelopes
--- echo removed to improve script performance
 --
 --
 -- credits:
@@ -47,7 +40,7 @@ reflection = require 'reflection'
 
 eglut=include("lib/eglut")
 waveform=include("lib/waveform")
-pages=include("lib/pages")
+screens=include("lib/screens")
 midi_helper=include("lib/midi_helper")
 
 -- what is this code doing here?????
@@ -206,31 +199,31 @@ function setup_params()
   -- params:set_action("live_audio_dry_wet",function(x)
   --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_audio_dry_wet",{x})
   -- end)
-  params:add_separator("pages/voices/scenes")
+  params:add_separator("screens/voices/scenes")
   params:add_number("active_page","active page",1,2,1)
   params:set_action("active_page", function(x) 
     local voice, scene, channel
     if params:get("active_page") == 1 then 
-      voice = pages.p1ui.selected_voice
-      scene = pages.p1ui.selected_scene
+      voice = screens.p1ui.selected_voice
+      scene = screens.p1ui.selected_scene
     elseif params:get("active_page") == 2 then 
-      voice = pages.p2ui.selected_voice
-      scene = pages.p2ui.selected_scene
+      voice = screens.p2ui.selected_voice
+      scene = screens.p2ui.selected_scene
     end
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
   end)
   params:add_number("active_voice","active voice",1,num_voices,1)
   params:set_action("active_voice", function(x) 
-    pages.p1ui.selected_voice = x
-    pages.p2ui.selected_voice = x
+    screens.p1ui.selected_voice = x
+    screens.p2ui.selected_voice = x
     local voice, scene, channel
     if params:get("active_page") == 1 then 
-      voice = pages.p1ui.selected_voice
-      scene = pages.p1ui.prev_scenes[voice]
+      voice = screens.p1ui.selected_voice
+      scene = screens.p1ui.prev_scenes[voice]
     elseif params:get("active_page") == 2 then 
-      voice = pages.p2ui.selected_voice
-      scene = pages.p2ui.prev_scenes[voice]
+      voice = screens.p2ui.selected_voice
+      scene = screens.p2ui.prev_scenes[voice]
     end
     params:set("active_scene",scene)
     eglut:update_scene(voice,scene)
@@ -240,17 +233,17 @@ function setup_params()
   end)
   params:add_number("active_scene","active scene",1,num_scenes,1)
   params:set_action("active_scene", function(x) 
-    pages.p1ui.selected_scene = x
-    pages.p2ui.selected_scene = x
-    pages.p1ui.prev_scenes[pages.p1ui.selected_voice] = x
-    pages.p2ui.prev_scenes[pages.p2ui.selected_voice] = x
+    screens.p1ui.selected_scene = x
+    screens.p2ui.selected_scene = x
+    screens.p1ui.prev_scenes[screens.p1ui.selected_voice] = x
+    screens.p2ui.prev_scenes[screens.p2ui.selected_voice] = x
     local voice, scene, channel
     if params:get("active_page") == 1 then 
-      voice = pages.p1ui.selected_voice
-      scene = pages.p1ui.selected_scene
+      voice = screens.p1ui.selected_voice
+      scene = screens.p1ui.selected_scene
     elseif params:get("active_page") == 2 then 
-      voice = pages.p2ui.selected_voice
-      scene = pages.p2ui.selected_scene
+      voice = screens.p2ui.selected_voice
+      scene = screens.p2ui.selected_scene
     end
     params:set(voice.."scene",scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
@@ -543,11 +536,12 @@ function init_reflectors()
     "play","volume","ptr_delay","speed","seek",
     "size",
     -- "size_jitter","size_jitter_mult",
-    "density","density_beat_divisor","density_jitter","density_jitter_mult",
+    "density","density_beat_divisor",
     "pitch","spread_sig",
     "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
     "jitter",
     "fade","attack_level","attack_time","decay_time","env_shape",
+    -- "fade","attack_level","attack_time","decay_time","env_shape_attack","env_shape_decay",
     "cutoff","q","send","pan","spread_pan",
     "subharmonics","overtones",
   }
@@ -743,13 +737,13 @@ function enc_debouncer(callback,debounce_time)
 end
 
 function get_selected_voice()
-    return pages.p1ui.selected_voice
+    return screens.p1ui.selected_voice
 end
 
 function init()
   print(">>>>>>>init futures past<<<<<<<<")
 
-  pages:init({
+  screens:init({
     composition_top=composition_top,
     composition_bottom=composition_bottom,
     composition_left=composition_left,
@@ -778,7 +772,7 @@ function init()
   screen.aa(0)
   
   redrawtimer = metro.init(function() 
-    local active_voice, scene = pages:get_selected_ui_elements()
+    local active_voice, scene = screens:get_selected_ui_elements()
     
     --check to keep active scene in sync with selected scene of active voice
     if scene ~= params:get(active_voice.."scene") then
@@ -789,7 +783,7 @@ function init()
     if (norns.menu.status() == false) then
       if screen_dirty == true then redraw() end
     end
-  end, 1/30, -1)
+  end, 1/15, -1)
   redrawtimer:start()
   screen_dirty = true
   osc.send( { "localhost", 57120 }, "/sc_osc/init_completed",{
@@ -813,7 +807,7 @@ function init()
 
   if device_16n then midi_helper.update_midi_devices(1,true) end
 
-  --todo: figure out why we need to flip rec_scene to get params to show...something to do with show_hide loop at the start?
+  --todo: figure out why we need to flip rec_scene and active voice to get params to show...something to do with show_hide loop at the start?
   params:set('rec_scene1',2)
   params:set('rec_scene1',1)
   params:set('rec_scene2',2)
@@ -822,7 +816,17 @@ function init()
   params:set('rec_scene3',1)
   params:set('rec_scene4',2)
   params:set('rec_scene4',1)
-  
+
+  local current_active = params:get("active_voice")
+  for voice=1, num_voices do 
+    if voice ~= current_active then
+      params:set('active_voice',voice)
+    end
+  end
+  clock.run(function() 
+    clock.sleep(0.1)
+    params:set('active_voice',current_active)
+  end)
   -- for i=1,eglut.num_voices do
   --   for j=1,eglut.num_scenes do
   --     params:set(i.."ptr_delay"..j,0.01)
@@ -833,7 +837,7 @@ function init()
 end
 
 function key(k,z)  
-  pages:key(k,z)
+  screens:key(k,z)
   -- if k==1 then
   --   if z==1 then
   --     alt_key=true
@@ -849,7 +853,7 @@ function key(k,z)
 end
 
 function enc(n,d)
-  pages:enc(n,d)
+  screens:enc(n,d)
   screen_dirty = true
 end
 -------------------------------
@@ -869,7 +873,7 @@ function redraw()
 
 
   screen.clear()
-  pages:redraw(params:get("active_page"),waveform_active_play)
+  screens:redraw(params:get("active_page"),waveform_active_play)
 
   -- screen.peek(0, 0, 127, 64)
   screen.stroke()

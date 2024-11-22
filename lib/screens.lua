@@ -1,11 +1,11 @@
-local pages={}
+local screens={}
 
 local reflector_button_letters={"R","L","P"}
 local reflector_button_labels={"rec","loop","play"}
 local alt_key = false
 local screen_recording = false
 -- function 
-function pages:init(args)
+function screens:init(args)
   local args=args==nil and {} or args
   for k,v in pairs(args) do
     self[k]=v
@@ -43,9 +43,9 @@ function pages:init(args)
 
 end
 
-function pages:display_frame()  
+function screens:display_frame()  
   screen.move(self.composition_left,self.composition_top)
-  screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left,self.composition_bottom-self.composition_top)
+  screen.rect(self.composition_left,self.composition_top,self.composition_right-self.composition_left+1,self.composition_bottom-self.composition_top)
   screen.level(1)
   screen.fill()
   screen.move(self.composition_left,self.composition_top)
@@ -53,7 +53,7 @@ function pages:display_frame()
   screen.stroke()
 end
 
-function pages:get_selected_ui_elements()
+function screens:get_selected_ui_elements()
   local active_page = params:get("active_page")
   if active_page == 1 then
     local voice = self.p1ui.selected_voice
@@ -67,7 +67,7 @@ function pages:get_selected_ui_elements()
   end
 end
 
-function pages:get_active_ui_area()
+function screens:get_active_ui_area()
   local active_page = params:get("active_page")
   if active_page == 1 then
     return self.p1ui.selected_ui_area
@@ -76,7 +76,7 @@ function pages:get_active_ui_area()
   end
 end
 
-function pages:get_active_ui_area_type()
+function screens:get_active_ui_area_type()
   local active_ui_area_type
   local ui_area = self:get_active_ui_area()
   if ui_area == "mode" then
@@ -93,10 +93,10 @@ function pages:get_active_ui_area_type()
   return active_ui_area_type
 end
 
-function pages:get_active_reflector()
+function screens:get_active_reflector()
   local active_reflector
   local ui_area = self:get_active_ui_area()
-  local active_ui_area = pages:get_active_ui_area_type()
+  local active_ui_area = screens:get_active_ui_area_type()
   if active_ui_area == "reflectorbutton" then
     active_reflector=tonumber(string.sub(ui_area,-3,-3))
   elseif active_ui_area == "reflector" then
@@ -105,10 +105,10 @@ function pages:get_active_reflector()
   return active_reflector
 end
 
-function pages:get_active_reflector_button()
+function screens:get_active_reflector_button()
   local active_reflector_button
   local ui_area = self:get_active_ui_area()
-  local active_ui_area = pages:get_active_ui_area_type()
+  local active_ui_area = screens:get_active_ui_area_type()
   if active_ui_area == "reflectorbutton" then
     active_reflector_button=tonumber(string.sub(ui_area,-1))
   end
@@ -116,7 +116,7 @@ function pages:get_active_reflector_button()
 end
 
 
-function pages:set_selected_ui_area(ix)
+function screens:set_selected_ui_area(ix)
   local active_page = params:get("active_page")
   if active_page==1 and self.p1ui.ui_areas[ix] then
     self.p1ui.selected_ui_area_ix=ix
@@ -129,7 +129,7 @@ function pages:set_selected_ui_area(ix)
   end
 end
 
-function pages:key(k,z)
+function screens:key(k,z)
   if k==1 then
     if z==1 then
       alt_key=true
@@ -149,7 +149,7 @@ function pages:key(k,z)
   end
 end
 
-function pages:enc(n,d)
+function screens:enc(n,d)
   local active_page = params:get("active_page")
   if n==1 then
     active_page=util.clamp(d+active_page,1,2)
@@ -209,7 +209,7 @@ function pages:enc(n,d)
       local ui_area_type = self:get_active_ui_area_type()
       if d > 0 and ui_area_type == "reflectorbutton" then
         local voice, scene, reflector = self:get_selected_ui_elements()
-        local loop_visible = params:visible(voice.."-"..pages:get_active_reflector().."loop"..scene)
+        local loop_visible = params:visible(voice.."-"..screens:get_active_reflector().."loop"..scene)
         if loop_visible == false then ix = ix +2 end
       end
       
@@ -297,7 +297,7 @@ function pages:enc(n,d)
   end
 end
 
-function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
+function screens:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   local button_letters={"m","v","sc"}
   local button_size=((self.composition_bottom-self.composition_top)/3)
   local button_left = self.composition_left - button_size - 1
@@ -348,7 +348,7 @@ function pages:draw_mode_voice_scene_buttons(ui_area, voice, scene)
   end
 end
 
-function pages:redraw(page_num, show_sig_positions)
+function screens:redraw(page_num, show_sig_positions_array)
   
   self:display_frame()
   local ui_area = self:get_active_ui_area()
@@ -363,14 +363,17 @@ function pages:redraw(page_num, show_sig_positions)
     local show_waveform_name = waveform_names[show_waveform_ix]
     local show_waveform = waveforms[show_waveform_name]:get_samples()~=nil
     if show_waveform then
-      local sig_positions, highlight_sig_positions
-      if show_sig_positions[voice] then
-        highlight_sig_positions = true
+      local sig_positions, show_sig_positions
+      local size = params:get(voice .. "size" .. scene)
+      local sample_length = params:get(voice .. "sample_length")
+      local sig_size = math.ceil(size/sample_length)
+      if show_sig_positions_array[voice] then
+        show_sig_positions = true
       else
-        highlight_sig_positions = false
+        show_sig_positions = false
       end
       sig_positions=waveform_sig_positions[voice.."granulated"]
-      waveforms[show_waveform_name]:redraw(sig_positions,highlight_sig_positions)
+      waveforms[show_waveform_name]:redraw(sig_positions,show_sig_positions,sig_size)
     end
     screen.level(10)  
     screen.move(self.composition_left,self.composition_bottom+7)
@@ -557,4 +560,4 @@ function pages:redraw(page_num, show_sig_positions)
   end
 end
 
-return pages
+return screens
