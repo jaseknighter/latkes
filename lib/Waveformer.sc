@@ -44,10 +44,10 @@ Waveformer {
         sample_length: sample_length
       );
       waveformQueue.addFirst(item);
-
       if(generatingWaveform == "-1", {
         this.generateWaveforms(buf_array_ix);
       },{
+      // (["queue waveform",waveformQueue,generatingWaveform,buf_array_ix,buf_ix,sample_start,sample_length]).postln;
         this.stopWaveformGeneration(buf_array_ix,buf_ix);
       });
     });
@@ -70,6 +70,7 @@ Waveformer {
         waveformQueue.removeAt(removeQueueIndex);
         // (["remove wfqueue",buf_array_ix,removeQueueIndex,waveformQueue]).postln;
         abandonCurrentWaveform = true;
+        generatingWaveform = "-1";
 			});
 		});
 	}
@@ -83,7 +84,7 @@ Waveformer {
 		generatingWaveform = buf_array_ix.asInteger.asString ++ "-" ++ waveformQueue.last.buf_ix.asInteger.asString;
 
     waveformRoutine = Routine.new({
-
+      if (waveformQueue.isEmpty,{ "wfq is empty".postln });
 			while({ waveformQueue.notEmpty }, {
 				var buf, buf_size, buf_segment_start, buf_segment_length;
         var startSecs = Date.getDate.rawSeconds;
@@ -101,9 +102,11 @@ Waveformer {
         buf_size = buf.numFrames;
         buf_segment_start = item.sample_start * buf_size;
         buf_segment_length = item.sample_length * buf_size;
+        // (["generate waveform",buf, buf_size, buf_segment_start, buf_segment_length]).postln;
         if(buf.isNil, {
 					("buffer could not be found for waveform generation:" + item).postln;
 				}, {
+          
 
 					// numFramesRemaining = buf.numFrames;
 					numFramesRemaining = buf_segment_length;

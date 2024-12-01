@@ -1,7 +1,7 @@
 local screens={}
 
-local reflector_button_letters={"R","L","P"}
-local reflector_button_labels={"rec","loop","play"}
+local reflector_button_letters_s2={"R","L","P"}
+local reflector_button_labels_s2={"rec","loop","play"}
 local alt_key = false
 local screen_recording = false
 -- function 
@@ -70,9 +70,9 @@ end
 function screens:get_active_ui_area()
   local active_page = params:get("active_page")
   if active_page == 1 then
-    return self.p1ui.selected_ui_area
+    return self.p1ui.selected_ui_area or 2
   elseif active_page == 2 then
-    return self.p2ui.selected_ui_area
+    return self.p2ui.selected_ui_area or 2
   end
 end
 
@@ -133,7 +133,7 @@ function screens:key(k,z)
   if k==1 then
     if z==1 then
       alt_key=true
-      print("true")
+      -- print("true")
     else
       alt_key=false
       if screen_recording == true then
@@ -232,13 +232,12 @@ function screens:enc(n,d)
             self.p2ui.selected_ui_area=self.p2ui.ui_areas[self.p2ui.selected_ui_area_ix]
           end 
         end
-        local reflector = tonumber(string.sub(self.p2ui.selected_ui_area,16,16))
+        local reflector = tonumber(string.sub(self:get_active_ui_area(),16,16))
         self.p2ui.selected_reflector = reflector
       elseif ui_area_type == "reflector" then
         local reflector = self:get_active_reflector()
         self.p2ui.selected_reflector = reflector
         self.p2ui.selected_reflector_button = nil
-        print("reflector",self.p2ui.selected_reflector)
       else
         self.p2ui.selected_reflector = nil
         self.p2ui.selected_reflector_button = nil
@@ -288,7 +287,6 @@ function screens:enc(n,d)
         -- print("visible",reflector_record_id,params:visible(reflector_record_id))
         -- if params:visible(reflector_record_id) == true then
           local reflector_id=reflectors_selected_params[voice][scene][reflector].id
-          print("update reflector", voice, scene, reflector,reflector_id)
           params:delta(reflector_id,d)
         -- end
 
@@ -449,7 +447,7 @@ function screens:redraw(page_num, show_sig_positions_array)
           label = reflector_name
           if string.sub(ui_area,1,16) == "reflectorbutton" .. reflector then
             local button_ix = tonumber(string.sub(ui_area,-1))
-            local button = reflector_button_labels[button_ix]
+            local button = reflector_button_labels_s2[button_ix]
             label = label .. "-" .. button
           else 
             reflector_id=reflector_param.id
@@ -486,7 +484,7 @@ function screens:redraw(page_num, show_sig_positions_array)
 
             local button_size=((self.composition_bottom-self.composition_top)/3)
             local button_top=self.composition_top+(button_size*(reflector_button-1))
-            screen.rect(self.composition_right+2,button_top,button_size-1,button_size-1)
+            screen.rect(self.composition_right+3,button_top,button_size-1,button_size-1)
             if reflector_button == tonumber(string.sub(ui_area,-1)) and string.sub(ui_area,1,16) == "reflectorbutton" .. reflector then
               screen.level(15)
               screen.fill()
@@ -506,11 +504,11 @@ function screens:redraw(page_num, show_sig_positions_array)
               screen.level(playing==2 and 15 or 5)
             end
             -- screen.move(self.composition_right+button_size+4,button_top+6)
-            screen.circle(self.composition_right+button_size+4,button_top+6,1)
+            screen.rect(self.composition_right+button_size+4,button_top+6,1,1)
             screen.stroke()
             screen.level(0)
             screen.move(self.composition_right+6,button_top+8)
-            screen.text(reflector_button_letters[reflector_button])
+            screen.text(reflector_button_letters_s2[reflector_button])
             screen.stroke()
           end
         end
@@ -554,6 +552,20 @@ function screens:redraw(page_num, show_sig_positions_array)
         screen.move(param_bar_x,param_bar_y)
         screen.rect(param_bar_x,param_bar_y,bar_width-3,param_bar_height)
         screen.fill()
+
+        local count=reflectors[voice][scene][reflector_id].count
+        local playing=reflectors[voice][scene][reflector_id].play
+        local recording=reflectors[voice][scene][reflector_id].rec
+        if playing > 0 and recording < 1 and count > 0 then
+            local step=reflectors[voice][scene][reflector_id].step
+            local endpoint=reflectors[voice][scene][reflector_id].endpoint
+            local step_pct = step/endpoint
+            screen.level(3)
+            local prog_x = param_bar_x+bar_width/2-2
+            local prog_y = self.composition_bottom - 1 - (step_pct*(self.frame_height-1))
+            screen.rect(prog_x,prog_y,1,1)
+        end
+
         screen.stroke()
       end
     end

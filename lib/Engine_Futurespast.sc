@@ -10,6 +10,7 @@ Engine_Futurespast : CroneEngine {
   // var s;
   var osc_funcs;
   var eglut;
+  var s;
 
 	*new { arg context,doneCallback;
 		^super.new(context,doneCallback);
@@ -17,11 +18,13 @@ Engine_Futurespast : CroneEngine {
 
 
   alloc {
-    var s=context.server;
+    s=context.server;
 
     // ["memsize",s.options.memSize].postln;
-    s.options.memSize=8192*4; 
-    ["memsize post",s.options.memSize].postln;
+    // s.options.memSize=8192*16;
+    // s.options.memSize=1024*256; 
+    // s.options.memSize=1024*128; 
+    ["increasing memsize and numbuffers",s.options.memSize,s.options.numBuffers].postln;
     eglut=EGlut.new(s,context,this);
 
     "eglut inited".postln;
@@ -29,7 +32,12 @@ Engine_Futurespast : CroneEngine {
 
   free {
     "free Futurespast".postln;  
-    eglut.free;
+    ">>>>>>>>>>>>>>".postln;
+    s.queryAllNodes;
 
+    eglut.free;
+    s.options.memSize=8192; 
+    s.options.numBuffers=1024; 
+    
   }
 }

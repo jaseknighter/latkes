@@ -2,6 +2,7 @@
 --
 -- llllllll.co/t/futurespast
 --
+-- norns.script.load('/home/we/dust/code/futurespast/futurespast.lua')
 -- 
 -- v0.1_241118 (beta)
 --
@@ -53,7 +54,7 @@ local inited=false
 composition_top = 20
 local composition_bottom = 64-10
 composition_left = 23--16
-local composition_right = 127-20
+local composition_right = 127-16
 
 local num_voices = 4
 local num_scenes = 4
@@ -195,10 +196,6 @@ function setup_buffer_fill_amounts()
 end
 
 function setup_params()
-  -- params:add_control("live_audio_dry_wet","live audio dry/wet",controlspec.new(0,1,'lin',0.01,1))
-  -- params:set_action("live_audio_dry_wet",function(x)
-  --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_audio_dry_wet",{x})
-  -- end)
   params:add_separator("screens/voices/scenes")
   params:add_number("active_page","active page",1,2,1)
   params:set_action("active_page", function(x) 
@@ -535,15 +532,13 @@ function init_reflectors()
   reflectors_param_list={
     "play","volume","ptr_delay","speed","seek",
     "size",
-    -- "size_jitter","size_jitter_mult",
     "density","density_beat_divisor",
     "pitch","spread_sig",
     "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
     "jitter",
-    "fade","attack_level","attack_time","decay_time","env_shape",
-    -- "fade","attack_level","attack_time","decay_time","env_shape_attack","env_shape_decay",
+    "fade","attack_time","decay_time","env_shape",
     "cutoff","q","send","pan","spread_pan",
-    "subharmonics","overtones",
+    "subharmonics","overtones","overtone1","overtone2"
   }
   
   for i=1,#reflectors_param_list do
@@ -554,7 +549,7 @@ function init_reflectors()
     table.insert(eglut_params,{id=p_id,name=p_name}) 
   end
 
-  params:add_separator("granular reflectors")
+  params:add_separator("reflectors")
   params:add_option("reflector_autoloop","auto loop",{"off","on"},2)
   params:add_option("reflector_autoplay","auto play",{"off","on"},2)
   -- setup reflectors
@@ -613,6 +608,8 @@ function init_reflectors()
               reflector_tab:set_loop(0)
             else
               reflector_tab:set_loop(1)
+              local reflector_play=voice.."-"..reflector.."play"..scene
+              params:set(reflector_play,2)
             end
           end
         end)
@@ -629,11 +626,7 @@ function init_reflectors()
             end
           end
         end)
-
-
-
       end
-        
     end
   end
 
@@ -725,23 +718,96 @@ end
 -- reflector stuff end
 ---------------------------------------------------
 
-function enc_debouncer(callback,debounce_time)
-  -- if debounce_time then print("deb",debounce_time) end
-  debounce_time = debounce_time or 0.1
-  if enc_debouncing == false then
-    enc_debouncing = true
-    clock.sleep(debounce_time)
-    callback()
-    enc_debouncing = false
-  end
-end
-
 function get_selected_voice()
     return screens.p1ui.selected_voice
 end
 
 function init()
   print(">>>>>>>init futures past<<<<<<<<")
+  
+  print(">>>>>>>override PSET save/load/delete<<<<<<<<")
+
+-- og=paramset.read;function paramset.read (slf,f,s) print(">>>>read",slf,f,x); tab.print(slf);og(slf,f,s)  end
+
+
+
+  og_pset_write   = paramset.write
+  og_pset_read    = paramset.read
+  og_pset_delete  = paramset.delete
+
+  function paramset.write(self,filename, name)
+    og_pset_write(self,filename, name)
+    filename = filename or 1
+    local pset_number;
+    if type(filename) == "number" then
+      local n = filename
+      filename = norns.state.data .. norns.state.shortname
+      pset_number = string.format("%02d",n)
+      -- local filename_pre = filename .. "-" .. pset_number .. ".rdat"
+      local filename_pre = filename .. "-" .. pset_number
+      print(">>>>>>>new paramset:write...save reflector data",filename_pre)
+      local reflector_data_folder = filename_pre .. "-reflectors/"
+      util.make_dir(reflector_data_folder)
+      local reflector_data_folder_exists = util.file_exists(reflector_data_folder)
+      if reflector_data_folder_exists == true then 
+        for voice=1,num_voices do
+          for scene=1, num_scenes do
+            for k,v in pairs(reflectors[voice][scene]) do
+              if v.count and v.count > 0 then
+                filename = reflector_data_folder .. k .. ".rdat"
+                print("save reflector", voice,scene,k,v.count,filename)
+                v.save(v,filename)
+                -- reflection:save(reflectors[voice][scene][k],filename)
+              end
+            end
+          end
+        end
+      end
+      
+    end
+  end
+
+  function paramset.read(self,filename, silent)
+    og_pset_read(self,filename, silent)
+    filename = filename or norns.state.pset_last
+    local pset_number;
+    if type(filename) == "number" then
+      local n = filename
+      filename = norns.state.data .. norns.state.shortname
+      pset_number = string.format("%02d",n)
+      local filename_pre = filename .. "-" .. pset_number
+      local reflector_data_folder = filename_pre .. "-reflectors/"
+      print(">>>>>>>new paramset:read...read reflector data",reflector_data_folder)
+      local reflector_data_folder_exists = util.file_exists(reflector_data_folder)
+      if reflector_data_folder_exists == true then 
+        for voice=1,num_voices do
+          for scene=1, num_scenes do
+            for k,v in pairs(reflectors[voice][scene]) do
+              filename = reflector_data_folder .. k .. ".rdat"
+              local reflector_data_exists = util.file_exists(filename)
+              if reflector_data_exists then
+                print("load reflector", voice,scene,k,filename)
+                v = reflection.load(v,filename)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  function paramset.delete(self,filename, name, pset_number)
+    local filename_pre = string.sub(filename,1,-6)
+    local reflector_data_folder = filename_pre .. "-reflectors"
+    local reflector_data_folder_exists = util.file_exists(reflector_data_folder)
+    print("reflector_data_folder_exists",reflector_data_folder_exists)
+    if reflector_data_folder_exists == true then 
+      print(">>>>>>>new paramset:delete...delete reflector data",reflector_data_folder)
+      norns.system_cmd("rm -r "..reflector_data_folder)
+    end
+    og_pset_delete(self,filename, name, pset_number)    
+  end
+
 
   screens:init({
     composition_top=composition_top,
@@ -885,4 +951,10 @@ function cleanup ()
   reflectors=nil
   -- if redrawtimer then metro.free(redrawtimer) end
   eglut:cleanup()
+
+  --reinstate og params functions
+  paramset.write = og_pset_write
+  paramset.read = og_pset_read
+  paramset.delete = og_pset_delete
+  
 end
