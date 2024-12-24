@@ -49,6 +49,8 @@ Waveformer {
       },{
       // (["queue waveform",waveformQueue,generatingWaveform,buf_array_ix,buf_ix,sample_start,sample_length]).postln;
         this.stopWaveformGeneration(buf_array_ix,buf_ix);
+        // "stop"
+        // waveformQueue.size.postln;
       });
     });
 	}
@@ -66,7 +68,7 @@ Waveformer {
 				arg item,i;
         item.buf_ix == i;
 			});
-      if((removeQueueIndex.notNil).and( waveformQueue.size > 2), {
+      if((removeQueueIndex.notNil).and( waveformQueue.size > 1), {
         waveformQueue.removeAt(removeQueueIndex);
         // (["remove wfqueue",buf_array_ix,removeQueueIndex,waveformQueue]).postln;
         abandonCurrentWaveform = true;
@@ -176,6 +178,7 @@ Waveformer {
                 // 0.00001.yield;
                 // Let other sclang work happen if it's a long buffer
                 if(buf_segment_length > 1000000, {
+                  // 0.004.yield;
                   0.00004.yield;
                 });
               });
@@ -205,7 +208,7 @@ Waveformer {
 				// 0.1.yield;
 			});
 
-			// ("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
+			("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
 			generatingWaveform = "-1";
 
 		}).play;

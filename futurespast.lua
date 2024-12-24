@@ -212,6 +212,7 @@ function setup_params()
   end)
   params:add_number("active_voice","active voice",1,num_voices,1)
   params:set_action("active_voice", function(x) 
+    screen.clear()
     screens.p1ui.selected_voice = x
     screens.p2ui.selected_voice = x
     local voice, scene, channel
@@ -222,14 +223,15 @@ function setup_params()
       voice = screens.p2ui.selected_voice
       scene = screens.p2ui.prev_scenes[voice]
     end
+    osc.send( { "localhost", 57120 }, "/sc_eglut/set_active_voice",{x-1})
     params:set("active_scene",scene)
     eglut:update_scene(voice,scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
-    osc.send( { "localhost", 57120 }, "/sc_eglut/set_active_voice",{x-1})
   end)
   params:add_number("active_scene","active scene",1,num_scenes,1)
   params:set_action("active_scene", function(x) 
+    screen.clear()
     screens.p1ui.selected_scene = x
     screens.p2ui.selected_scene = x
     screens.p1ui.prev_scenes[screens.p1ui.selected_voice] = x
@@ -668,11 +670,11 @@ function init_reflectors()
   end
 
   params:add_group("copy reflectors",6)
-  params:add_number("copy_reflectors_voice_from","copy from voice",1,num_voices,1)
-  params:add_option("copy_reflectors_scene_from","copy from scene",reflector_scene_labels,1)
-  params:add_number("copy_reflectors_voice_to","copy to voice",1,num_voices,1)
-  params:add_option("copy_reflectors_scene_to","copy to scene",reflector_scene_labels,1)
-  params:add_trigger("copy_reflectors_selected","copy selected")
+  params:add_number("copy_reflectors_voice_from","from voice",1,num_voices,1)
+  params:add_option("copy_reflectors_scene_from","from scene",reflector_scene_labels,1)
+  params:add_number("copy_reflectors_voice_to","to voice",1,num_voices,1)
+  params:add_option("copy_reflectors_scene_to","to scene",reflector_scene_labels,1)
+  params:add_trigger("copy_reflectors_selected","copy to selected voice/scene")
   params:set_action("copy_reflectors_selected",function() 
     local voice_from=params:get("copy_reflectors_voice_from")
     local scene_from=params:get("copy_reflectors_scene_from")
@@ -688,7 +690,7 @@ function init_reflectors()
     end
   end)
   
-  params:add_trigger("copy_reflectors_global","global copy from selected")
+  params:add_trigger("copy_reflectors_global","copy to all voices/scenes")
   params:set_action("copy_reflectors_global",function() 
     local voice_from=params:get("copy_reflectors_voice_from")
     local scene_from=params:get("copy_reflectors_scene_from")
@@ -847,9 +849,10 @@ function init()
     end
     
     if (norns.menu.status() == false) then
-      if screen_dirty == true then redraw() end
+      redraw()
+      -- if screen_dirty == true then redraw() end
     end
-  end, 1/15, -1)
+  end, 1/30, -1)
   redrawtimer:start()
   screen_dirty = true
   osc.send( { "localhost", 57120 }, "/sc_osc/init_completed",{
@@ -904,18 +907,7 @@ end
 
 function key(k,z)  
   screens:key(k,z)
-  -- if k==1 then
-  --   if z==1 then
-  --     alt_key=true
-  --   else
-  --     alt_key=false
-  --   end
-  -- end
-  -- if k==2 and z==0 then
-  --   --do something
-  -- elseif k==3 and z==0 then
-  --   --do something
-  -- end
+  screen_dirty = true
 end
 
 function enc(n,d)

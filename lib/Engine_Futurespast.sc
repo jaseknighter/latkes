@@ -21,7 +21,7 @@ Engine_Futurespast : CroneEngine {
     s=context.server;
 
     // ["memsize",s.options.memSize].postln;
-    // s.options.memSize=8192*16;
+    // s.options.memSize=2**15; //65536
     // s.options.memSize=1024*256; 
     // s.options.memSize=1024*128; 
     ["increasing memsize and numbuffers",s.options.memSize,s.options.numBuffers].postln;
@@ -37,7 +37,7 @@ Engine_Futurespast : CroneEngine {
 
     eglut.free;
     s.options.memSize=8192; 
-    s.options.numBuffers=1024; 
+    // s.options.numBuffers=1024; 
     
   }
 }

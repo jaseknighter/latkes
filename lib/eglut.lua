@@ -10,7 +10,7 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
-MIN_SAMPLE_LENGTH = 0.1
+MIN_SAMPLE_LENGTH = 1
 MAX_GRAIN_SIZE = 5
 e.start_scene_params_at = 10
 e.param_list={
@@ -52,7 +52,7 @@ function e.enc_debouncer(callback,debounce_time)
   --   clock.sleep(debounce_time)
   --   enc_debouncing = false
   -- else
-  --   print("debouncing...skip...")
+  --   -- print("debouncing...skip...")
   -- end
 end
 
@@ -171,7 +171,7 @@ local function update_grain_envelope(i,scene)
   local function callback_func()
     engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
   end
-  clock.run(e.enc_debouncer,callback_func,0.01)
+  clock.run(e.enc_debouncer,callback_func,0.1)
 end 
 
 
@@ -270,7 +270,7 @@ function e:setup_params()
         end
       end
       -- callback_func()
-      clock.run(e.enc_debouncer,callback_func,0.01)        
+      clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
     -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"exp",0.1,10,"s",0.1/self.max_buffer_length))
     params:add_control(i.."sample_length","sample length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
@@ -294,7 +294,7 @@ function e:setup_params()
         end
       end
       -- callback_func()
-      clock.run(e.enc_debouncer,callback_func,0.01)        
+      clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
     local sample_modes={"off","live stream","recorded"}
     params:add_option(i.."sample_mode","sample mode",sample_modes,i==1 and 2 or 1)
@@ -313,6 +313,7 @@ function e:setup_params()
         mode_ix = 2
         if recorded_file ~= "-" then
           e:load_file(i,e.active_scenes[i],recorded_file)            
+          params:set(i.."play"..params:get(i.."scene"),2)
         else
           print("no file selected to granulate")
           params:set(i.."play"..params:get(i.."scene"),1)
@@ -378,7 +379,11 @@ function e:setup_params()
       params:set_action(i.."send"..scene,function(value) engine.send(i,value) end)
 
       params:add_control(i.."ptr_delay"..scene,"pointer sync-delay",controlspec.new(0,2,"lin",0.001,0.2,"",0.01/2))
-      params:set_action(i.."ptr_delay"..scene,function(value) engine.ptr_delay(i,value) end)
+      params:set_action(i.."ptr_delay"..scene,function(value) 
+        -- params:set(i.."speed"..scene,1)
+        engine.ptr_delay(i,value) 
+        
+      end)
       -- params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.05,2,"lin",0.001,0.2,"",0.05/2))
       -- params:set_action(i.."ptr_delay"..scene,function(value) engine.ptr_delay(i,1.29) end)
       
@@ -400,7 +405,7 @@ function e:setup_params()
         local function callback_func()
           engine.speed(i,value) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
         -- clock.run(speed_check,value,i,scene)
         speed_check(value,i,scene)
       end)
@@ -410,7 +415,7 @@ function e:setup_params()
         local function callback_func()
           engine.seek(i,util.clamp(value,0,1)) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
 
       -- note the size values sent to SuperCollider are  1/10 the value of the parameter
@@ -427,7 +432,7 @@ function e:setup_params()
             bs*max_size)                        --max size from 0.1 to 1 based on density
           )
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)
+        clock.run(e.enc_debouncer,callback_func,0.1)
       end)
 
       params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",0.1,4,"/beat",1/400))
@@ -435,7 +440,7 @@ function e:setup_params()
         local function callback_func()
           engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
         local p=params:lookup_param(i.."size"..scene)
         p:bang()
       end)
@@ -460,7 +465,7 @@ function e:setup_params()
         local function callback_func()
           engine.pitch(i,math.pow(0.5,-value/12)) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_taper(i.."spread_sig"..scene,"spread sig",0,1,0)
@@ -468,7 +473,7 @@ function e:setup_params()
         local function callback_func()
           engine.spread_sig(i,-value) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_taper(i.."spread_sig_offset1"..scene,"spread sig offset 1",0,500,0,5,"ms")
@@ -476,7 +481,7 @@ function e:setup_params()
         local function callback_func()
           engine.spread_sig_offset1(i,-value/1000) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_taper(i.."spread_sig_offset2"..scene,"spread sig offset 2",0,500,0,5,"ms")
@@ -484,7 +489,7 @@ function e:setup_params()
         local function callback_func()
           engine.spread_sig_offset2(i,-value/1000) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_taper(i.."spread_sig_offset3"..scene,"spread sig offset 3",0,500,0,5,"ms")
@@ -492,7 +497,7 @@ function e:setup_params()
         local function callback_func()
           engine.spread_sig_offset3(i,-value/1000) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_taper(i.."jitter"..scene,"jitter",0,500,0,5,"ms")
@@ -500,7 +505,7 @@ function e:setup_params()
         local function callback_func()
           engine.jitter(i,value/1000) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
 
 
@@ -509,7 +514,7 @@ function e:setup_params()
         local function callback_func()
           engine.envscale(i,value/1000) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       -- params:add_control(i.."attack_level"..scene,"attack level",controlspec.new(0,1,"lin",0.01,1,"",0.01/1))
@@ -529,7 +534,7 @@ function e:setup_params()
         local function callback_func()
           update_grain_envelope(i,scene)
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       -- params:set("1attack_time1",0.4)
       params:add_control(i.."decay_time"..scene,"decay time",controlspec.new(0.01,0.99,"lin",0.01,0.5,"",0.001/1))
@@ -541,7 +546,7 @@ function e:setup_params()
         local function callback_func()
           update_grain_envelope(i,scene)
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_option(i.."env_shape"..scene,"env shape",{"exp","squared","lin","sin","wel","cubed"},4)
@@ -550,7 +555,7 @@ function e:setup_params()
         local function callback_func()
           update_grain_envelope(i,scene)
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
   
       params:add_control(i.."cutoff"..scene,"filter cutoff",controlspec.new(20,20000,"exp",0,20000,"hz"))
@@ -558,7 +563,7 @@ function e:setup_params()
         local function callback_func()
           engine.cutoff(i,value) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
       params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.01,1.0,"exp",0.01,0.2,"",0.01/1))
@@ -566,7 +571,7 @@ function e:setup_params()
         local function callback_func()
           engine.q(i,value) 
         end
-        clock.run(e.enc_debouncer,callback_func,0.01)        
+        clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
 
       params:add_control(i.."pan"..scene,"pan",controlspec.new(-1,1,"lin",0.01,0,"",0.01/1))
@@ -581,10 +586,10 @@ function e:setup_params()
       params:add_control(i.."overtones"..scene,"overtones vol",controlspec.new(0.00,1.00,"lin",0.01,0))
       params:set_action(i.."overtones"..scene,function(value) engine.overtones(i,value) end)
 
-      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1.00,4.00,"lin",0.1,2))
+      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1.00,4.00,"lin",1,2))
       params:set_action(i.."overtone1"..scene,function(value) engine.overtone1(i,value) end)
 
-      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1.00,4.00,"lin",0.1,4))
+      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1.00,4.00,"lin",1,4))
       params:set_action(i.."overtone2"..scene,function(value) engine.overtone2(i,value) end)
       
       -- params:add_text(i.."pattern"..scene,"pattern","")
