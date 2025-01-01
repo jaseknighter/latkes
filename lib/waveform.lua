@@ -31,27 +31,16 @@ function Waveform:set_samples(offset, padding, waveform_blob)
   end
 end
 
-function Waveform:clear_samples(clear_from)
-  if clear_from then
-    local clear_sample_from = math.floor(clear_from * #self.samples)
-    
-    for frame = clear_sample_from, #self.samples do
-      self.samples[frame] = {0,0}
-    end
-  else
-    self.samples = {}
-  end
-end
 
 function Waveform:get_samples()
   return self.samples
 end
 
-function Waveform:display_sigs_pos(sigs_pos, show_sig_positions, sig_size)
+function Waveform:display_sigs_pos(sigs_pos, playing, sig_size)
   --show signal position(s)
-  if #sigs_pos > 0 and show_sig_positions then
+  if #sigs_pos > 0 then
     sig_size = sig_size+1 or 2
-    screen.level(12)
+    screen.level(playing == 1 and 5 or 12)
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
     for i=1,#sigs_pos do
       local sig_pos = sigs_pos[i]
@@ -86,8 +75,6 @@ function Waveform:display_waveform()
   local active_pre_level = params:get(active_voice.."live_pre_level")
   
   if sample_mode == 1 then 
-    screen_level = 0 
-  elseif sample_mode == 2 then 
     screen_level = 10 
   else
     screen_level = util.round((active_rec_level + active_pre_level) * 7)
@@ -106,7 +93,7 @@ function Waveform:display_waveform()
   screen.stroke()
 end
 
-function Waveform:redraw(sigs_pos, show_sig_positions, sig_size)
+function Waveform:redraw(sigs_pos, playing, sig_size)
   if self.active==false then
     do return end
   end
@@ -117,7 +104,7 @@ function Waveform:redraw(sigs_pos, show_sig_positions, sig_size)
 
   --show signal(s) positions
   if sigs_pos then
-    self:display_sigs_pos(sigs_pos, show_sig_positions, sig_size)
+    self:display_sigs_pos(sigs_pos, playing, sig_size)
   end
   screen.stroke()
   screen.blend_mode(0)   

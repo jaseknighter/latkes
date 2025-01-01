@@ -11,7 +11,10 @@ EGlut {
 	var <file_buffers;
 	var <gvoices;
   var active_voice;
-	var <effectBus;
+	var <grainVoiceOutBusses;
+	var <effectSendBus;
+	var <effectReturnBusL;
+	var <effectReturnBusR;
 	var <phases;
   var <reset_density_phases;
   var <reset_density_phases_one_shot;
@@ -79,7 +82,7 @@ EGlut {
       var newbuf,newbuf2;
       var file, numChannels, soundfile_duration;
       var soundfile = SoundFile.new;
-      var mode = 2;
+      var mode = 1;
       soundfile.openRead(path.asString.standardizePath);
       numChannels = soundfile.numChannels;
       soundfile_duration = soundfile.duration;
@@ -171,13 +174,16 @@ EGlut {
     s.sync;
 
     SynthDef("live_recorder", {
-      arg voice=0,out=0,in=0, 
+      arg voice=0,out=0,
+          in=0, //bus for external audio
+          mode=0, //0=use external audio, 1=use source from a synthdef
+          internal_in, //use an internal bus
           buf=0, rate=1,
           pos=0,buf_pos_start=0,buf_pos_end=1,t_reset_pos=0,
           rec_level=1,pre_level=0,
           rec_phase;
       var buf_dur,buf_pos;
-      var sig=SoundIn.ar(in);
+      var sig= (mode < 1 * SoundIn.ar(in)) + (mode > 0 * In.ar(internal_in));
 
       var rec_buf_reset = Impulse.kr(
             freq:((buf_pos_end-buf_pos_start)*max_buffer_length).reciprocal,
@@ -186,6 +192,7 @@ EGlut {
 
       var recording_offset = buf_pos_start*max_buffer_length*SampleRate.ir;
       
+      // ((voice < 1) * in).poll;
       buf_dur = BufDur.ir(buf);
       buf_pos = Phasor.kr(trig: rec_buf_reset,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
@@ -202,42 +209,33 @@ EGlut {
 
     s.sync;
 
-    s.bind({ 
-      recorders = Array.fill(ngvoices*2, { arg i;
-        var chan;
-        if(i < ngvoices,{chan=0},{chan=1});
-        (["add recorder",ngvoices,i,chan]).postln;
-        Synth.new(\live_recorder, [
-          \voice, i,
-          \buf,live_buffers[i],
-          \in,chan,
-          \rec_phase,rec_phases[i].index
-        // ]);
-        ], target: pg);
-      });
-    });
-    s.sync;
-    recorders.postln;
-
     SynthDef("grain_synth", {
-      arg voice, out, effectBus, phase_out, level_out, buf, buf2,
+      arg voice, out, grainVoiceOutL, grainVoiceOutR, effectSendBus, phase_out, level_out, buf, buf2,
       mode=0,
       gate=0, pos=0, 
       buf_pos_start=0, 
       rec_phase_bus=0,
       buf_pos_end=1, 
       sample_length=default_sample_length/max_buffer_length,
-      density=1, density_phase_reset=0, 
+      density=1, 
+      density_phase_reset=0, 
       speed=1, jitter=0, spread_sig=0, voice_pan=0,	
       size=0.1, size_jitter=0, 
       pitch=1, spread_pan=0, gain=1, dry_wet=1, envscale=1,
       t_reset_pos=0, cutoff=20000, q=0.2, send=0, 
       ptr_delay=0,sync_to_rec_head=0,
-      // ptr_delay=0.2,sync_to_rec_head=0,
       subharmonics=0,
       overtones=0, overtone1=2, overtone2=4,
       gr_envbuf = -1,
-      spread_sig_offset1=0, spread_sig_offset2=0, spread_sig_offset3=0;
+      spread_sig_offset1=0, spread_sig_offset2=0, spread_sig_offset3=0,
+      density_lag=0.1, density_lag_curve=0,
+      size_lag=0.1,size_lag_curve=0,
+      spread_pan_lag=0.1,spread_pan_lag_curve=0,
+      cutoff_lag=0.1,cutoff_lag_curve=0,
+      send_lag=0.1,send_lag_curve=0,
+      pitch_lag=0.1,pitch_lag_curve=0,
+      speed_lag=0.1,speed_lag_curve=0,
+      pan_lag=0.1,pan_lag_curve=0;
 
       var rec_phase;
       var rec_phase_trig = 0;
@@ -284,6 +282,8 @@ EGlut {
       
       reset_grain_trig = ((reset_grain_trig >= 1) + (density_phase_reset >= 1)) >= 1;
 
+      density = VarLag.kr(density,density_lag,density_lag_curve);
+
       grain_trig = Sweep.kr(reset_grain_trig, density).linlin(0, 1, 0, 1, \minmax);
       grain_trig = grain_trig >= 1;
       
@@ -294,16 +294,18 @@ EGlut {
       // make sure size+size jitter is greater than 0, otherwise ignore the jitter
       size = ((size+size_jitter_sig > 0) * (size+size_jitter_sig)) + ((1-(size+size_jitter_sig > 0)) * size);
       size = ((size+size_jitter_sig < max_size) * (size+size_jitter_sig)) + ((1-(size+size_jitter_sig < max_size)) * size);
-      size = Lag.kr(size);
+      size = VarLag.kr(size,size_lag,size_lag_curve);
 
-      spread_pan = Lag.kr(spread_pan);
+      spread_pan = VarLag.kr(spread_pan,spread_pan_lag,spread_pan_lag_curve);
 
-      cutoff = Lag.kr(cutoff);
-      q = Lag.kr(q);
-      send = Lag.kr(send);
-      pitch = Lag.kr(pitch,0.25);
-      speed = Lag.kr(speed,0.25);
-      
+      cutoff = VarLag.kr(cutoff,cutoff_lag,cutoff_lag_curve);
+      q = Lag.kr(q,0.2);
+      send = VarLag.kr(send,send_lag,send_lag_curve);
+      pitch = VarLag.kr(pitch,pitch_lag,pitch_lag_curve);
+
+      speed = VarLag.kr(speed,speed_lag,speed_lag_curve);
+      voice_pan = VarLag.kr(pan_lag,pan_lag_curve);
+
       buf_dur = BufDur.ir(buf);
 
       pan_sig = TRand.kr(trig: grain_trig,lo:-1,hi:(2*spread_pan)-1);
@@ -405,7 +407,7 @@ EGlut {
       window_sig_pos4 = active_sig_pos4.linlin(buf_pos_start,buf_pos_end,0,1);
 
       SendReply.kr(Impulse.kr(15), "/eglut_sigs_pos", [voice,window_sig_pos1, window_sig_pos2, window_sig_pos3, window_sig_pos4]);
-      // constantly queue waveform generation if mode is "off" or "live" (but not "recorded")
+      // constantly queue waveform generation if mode "live" (but not "recorded")
       SendReply.kr(Impulse.kr(5), "/queue_waveform_generation", [mode,voice,buf_pos_start,buf_pos_end-buf_pos_start]);
 
 
@@ -862,28 +864,40 @@ EGlut {
       
       env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
       level = env;
-      Out.ar(out, sig * level * gain);
+    
+      //control outs
       Out.kr(phase_out, sig_pos);
-      // ignore gain for effect and level out
-      Out.ar(effectBus, sig * level * 2 * send );
       Out.kr(level_out, level);
       LocalOut.kr([grain_trig,out_of_window]);
-      // LocalOut.kr(grain_trig);
+    
+      //audio outs
+      Out.ar(grainVoiceOutL, sig[0] * level); // ignore gain for grainVoiceOut
+      Out.ar(grainVoiceOutR, sig[1] * level); // ignore gain for grainVoiceOut
+      Out.ar(effectSendBus, sig * level * 2 * send); // ignore gain for effect
+      Out.ar(out, sig * level * gain); 
+      
     }).add;
 
     SynthDef(\effect, {
-      arg in, out, echoVol=1.0, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1;
-      var sig = In.ar(in, 2), gsig;
-      
+      arg in, out, returnL, returnR, effectVol=1.0, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1;
+      var sig = In.ar(in, 2), gsig;      
       gsig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
-      Out.ar(out, gsig * echoVol);
-      
+      Out.ar(returnL, gsig);
+      Out.ar(returnR, gsig);
+      Out.ar(out, gsig * effectVol);
     }).add;
 
     s.sync;
 
-    // echo bus
-    effectBus = Bus.audio(context.server, 2);
+    // grain out bus
+    grainVoiceOutBusses = Array.fill(ngvoices*2, { arg i;
+      Bus.audio(context.server, 1);
+    });
+    
+    // effect busses
+    effectSendBus = Bus.audio(context.server, 2);
+    effectReturnBusL = Bus.audio(context.server, 1);
+    effectReturnBusR = Bus.audio(context.server, 1);
     s.sync;
 
     phases = Array.fill(ngvoices, { arg i; Bus.control(context.server); });
@@ -894,44 +908,74 @@ EGlut {
     });
 
     pg = ParGroup.head(context.xg);
-
+    
+    //instantiate the live recorders and grain voices
     s.bind({ 
-      gvoices = Array.fill(ngvoices, { arg i;
-        Synth.new(\grain_synth, [
-          \voice, i,
-          \out, context.out_b.index,
-          \rec_phase_bus,rec_phases[i].index,
-          \effectBus, effectBus.index,
-          \phase_out, phases[i].index,
-          \level_out, levels[i].index,
-          \buf, live_buffers[i],
-          \buf2, live_buffers[i+ngvoices],
-          // \gr_envbuf, -1
-          \gr_envbuf, gr_envbufs[i]
-        // ]);
-        ], target: pg);
+      recorders = Array.newClear(ngvoices*2);
+      gvoices = Array.newClear(ngvoices);
+      ngvoices.do({ arg i;
+        recorders.put(i,
+          Synth.tail(pg,\live_recorder, [
+            \voice, i,
+            \buf,live_buffers[i],
+            \in,0,
+            \rec_phase,rec_phases[i].index
+          ])
+        );
+        recorders.put(i+ngvoices,
+          Synth.after(recorders[i],\live_recorder, [
+            \voice, i,
+            \buf,live_buffers[i+ngvoices],
+            \in,1,
+            \rec_phase,rec_phases[i].index
+          ])
+        );
+        gvoices.put(i,
+          Synth.after(recorders[i+ngvoices],\grain_synth, [
+            \voice, i,
+            \out, context.out_b.index,
+            \grainVoiceOutL, grainVoiceOutBusses[i].index,
+            \grainVoiceOutR, grainVoiceOutBusses[i+ngvoices].index,
+            \rec_phase_bus,rec_phases[i].index,
+            \effectSendBus, effectSendBus.index,
+            \phase_out, phases[i].index,
+            \level_out, levels[i].index,
+            \buf, live_buffers[i],
+            \buf2, live_buffers[i+ngvoices],
+            // \gr_envbuf, -1
+            \gr_envbuf, gr_envbufs[i]
+          ])
+        );
       });
     });
 
     context.server.sync;
 
-    "second eglut init sync".postln;
+    Routine({ 1.wait; "print nodes".postln;context.server.queryAllNodes.postln; }).play;
+
+    (["second eglut init sync",grainVoiceOutBusses]).postln;
     thisEngine.addCommand("effects_on", "i", { arg msg; 
       if((msg[1]==1).and(effect.notNil),{
         effect.free;
         // effect.release;
         effect = nil;
-        (["echo off",effect,effectBus.index,context.out_b.index]).postln;
+        (["echo off",effect]).postln;
       });
       if((msg[1]==2).and(effect.isNil),{
         s.bind({ 
-          effect = Synth.tail(s,\effect, [\in, effectBus.index, \out, context.out_b.index], target: pg);
-          // effect = Synth.tail(s,\effect, [\in, effectBus.index, \out, context.out_b.index]); 
+          effect = Synth.before(recorders[ngvoices-1],\effect, [
+            \in, effectSendBus.index, 
+            \returnL, effectReturnBusL.index,
+            \returnR, effectReturnBusR.index,
+            \out, context.out_b.index
+          ]);
         });
-        (["echo on",effect,effectBus.index,context.out_b.index]).postln;
+        (["echo on",effect,effectReturnBusL.index,effectReturnBusR.index]).postln;
+        Routine({ 1.wait; "print nodes".postln; context.server.queryAllNodes.postln; }).play;
       });
     });
-    thisEngine.addCommand("echo_volume", "f", { arg msg; if(effect.notNil,{effect.set(\echoVol, msg[1])}); });
+
+    thisEngine.addCommand("echo_volume", "f", { arg msg; if(effect.notNil,{effect.set(\effectVol, msg[1])}); });
     thisEngine.addCommand("echo_time", "f", { arg msg; if(effect.notNil,{effect.set(\echoTime, msg[1])}); });
     thisEngine.addCommand("echo_damp", "f", { arg msg; if(effect.notNil,{effect.set(\damp, msg[1])}); });
     thisEngine.addCommand("echo_size", "f", { arg msg; if(effect.notNil,{effect.set(\size, msg[1])}); });
@@ -939,6 +983,33 @@ EGlut {
     thisEngine.addCommand("echo_fdbk", "f", { arg msg; if(effect.notNil,{effect.set(\feedback, msg[1])}); });
     thisEngine.addCommand("echo_mod_depth", "f", { arg msg; if(effect.notNil,{effect.set(\modDepth, msg[1])}); });
     thisEngine.addCommand("echo_mod_freq", "f", { arg msg; if(effect.notNil,{effect.set(\modFreq, msg[1])}); });
+
+    thisEngine.addCommand("live_source", "is", { arg msg;
+      var voice = msg[1] - 1;
+      var source = msg[2].asString;
+      var sourceBusses = Array.newClear(2);
+      var rec1_old,rec2_old;
+      if (source == "in", { 
+        recorders[voice].set(\mode, 0);
+        recorders[voice+ngvoices].set(\mode, 0);
+        (["set live source mode external: mode 0"]).postln;
+      },{
+        ngvoices.do({ arg i; 
+          if (source == ("voice" ++ i), { 
+            sourceBusses[0] = grainVoiceOutBusses[i].index; 
+            sourceBusses[1] = grainVoiceOutBusses[i+ngvoices].index; 
+          });
+        });
+        if (source == "effect", { sourceBusses[0] = effectReturnBusL.index; sourceBusses[1] = effectReturnBusR.index });
+        
+        (["set live source mode external: mode 1"]).postln;
+        // (["update live source", voice, source, sourceBusses,grainVoiceOutBusses]).postln;
+        recorders[voice].set(\mode, 1);
+        recorders[voice].set(\internal_in, sourceBusses[0]);
+        recorders[voice+ngvoices].set(\mode, 1);
+        recorders[voice+ngvoices].set(\internal_in, sourceBusses[1]);
+      });
+    });
 
     thisEngine.addCommand("read", "isff", { arg msg;
       var voice = msg[1]-1;
@@ -982,7 +1053,7 @@ EGlut {
         recorders[voice].set(\t_reset_pos, 1);
         recorders[voice+ngvoices].set(\t_reset_pos, 1);
 
-        ["set ptr_delay",rec_phase].postln;
+        // ["set ptr_delay",rec_phase].postln;
         Routine({
           0.1.wait;
           gvoices[voice].set(\sync_to_rec_head, 0);
@@ -1007,6 +1078,23 @@ EGlut {
       gvoices[voice].set(\speed, msg[2]);
       gvoices[voice].set(\sync_to_rec_head, 0);
     });
+
+    thisEngine.addCommand("speed_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var speed_lag = msg[2];
+      gvoices[voice].set(
+        \speed_lag, speed_lag
+      );    
+    });
+
+    thisEngine.addCommand("speed_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var speed_lag_curve = msg[2];
+      gvoices[voice].set(
+        \speed_lag_curve, speed_lag_curve
+      );    
+    });
+
 
     thisEngine.addCommand("spread_sig", "if", { arg msg;
       var voice = msg[1] - 1;
@@ -1038,6 +1126,23 @@ EGlut {
       gvoices[voice].set(\size, msg[2]);
     });
 
+    thisEngine.addCommand("size_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var size_lag = msg[2];
+      gvoices[voice].set(
+        \size_lag, size_lag
+      );    
+    });
+    
+    thisEngine.addCommand("size_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var size_lag_curve = msg[2];
+      gvoices[voice].set(
+        \size_lag_curve, size_lag_curve
+      );    
+    });
+
+
     thisEngine.addCommand("size_jitter", "if", { arg msg;
       var voice = msg[1] - 1;
       gvoices[voice].set(\size_jitter, msg[2]);
@@ -1048,14 +1153,63 @@ EGlut {
       gvoices[voice].set(\voice_pan, msg[2]);
     });
 
+    thisEngine.addCommand("pan_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var voice_pan_lag = msg[2];
+      gvoices[voice].set(
+        \voice_pan_lag, voice_pan_lag
+      );    
+    });
+
+    thisEngine.addCommand("pan_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var voice_pan_lag_curve = msg[2];
+      gvoices[voice].set(
+        \voice_pan_lag_curve, voice_pan_lag_curve
+      );    
+    });
+    
     thisEngine.addCommand("pitch", "if", { arg msg;
       var voice = msg[1] - 1;
       gvoices[voice].set(\pitch, msg[2]);
     });
 
+    thisEngine.addCommand("pitch_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var pitch_lag = msg[2];
+      gvoices[voice].set(
+        \pitch_lag, pitch_lag
+      );    
+    });
+
+    thisEngine.addCommand("pitch_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var pitch_lag_curve = msg[2];
+      gvoices[voice].set(
+        \pitch_lag_curve, pitch_lag_curve
+      );    
+    });
+
+
     thisEngine.addCommand("spread_pan", "if", { arg msg;
       var voice = msg[1] - 1;
       gvoices[voice].set(\spread_pan, msg[2]);
+    });
+
+    thisEngine.addCommand("spread_pan_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var spread_pan_lag = msg[2];
+      gvoices[voice].set(
+        \spread_pan_lag, spread_pan_lag
+      );    
+    });
+
+    thisEngine.addCommand("spread_pan_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var spread_pan_lag_curve = msg[2];
+      gvoices[voice].set(
+        \spread_pan_lag_curve, spread_pan_lag_curve
+      );    
     });
 
     thisEngine.addCommand("dry_wet", "if", { arg msg;
@@ -1076,8 +1230,22 @@ EGlut {
       gvoices[voice].set(
         \density, density
       );    
-      // (["set density",density,density.reciprocal]).postln;
-
+    });
+    
+    thisEngine.addCommand("density_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var density_lag = msg[2];
+      gvoices[voice].set(
+        \density_lag, density_lag
+      );    
+    });
+    
+    thisEngine.addCommand("density_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var density_lag_curve = msg[2];
+      gvoices[voice].set(
+        \density_lag_curve, density_lag_curve
+      );    
     });
     
     thisEngine.addCommand("gr_envbuf", "ifffff", { arg msg;
@@ -1128,6 +1296,22 @@ EGlut {
     gvoices[voice].set(\cutoff, msg[2]);
     });
     
+    thisEngine.addCommand("cutoff_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var cutoff_lag = msg[2];
+      gvoices[voice].set(
+        \cutoff_lag, cutoff_lag
+      );    
+    });
+
+    thisEngine.addCommand("cutoff_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var cutoff_lag_curve = msg[2];
+      gvoices[voice].set(
+        \cutoff_lag_curve, cutoff_lag_curve
+      );    
+    });
+
     thisEngine.addCommand("q", "if", { arg msg;
     var voice = msg[1] -1;
     gvoices[voice].set(\q, msg[2]);
@@ -1137,6 +1321,23 @@ EGlut {
     var voice = msg[1] -1;
     gvoices[voice].set(\send, msg[2]);
     });
+
+    thisEngine.addCommand("send_lag", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var send_lag = msg[2];
+      gvoices[voice].set(
+        \send_lag, send_lag
+      );    
+    });
+
+    thisEngine.addCommand("send_lag_curve", "if", { arg msg;
+      var voice = msg[1] - 1;
+      var send_lag_curve = msg[2];
+      gvoices[voice].set(
+        \send_lag_curve, send_lag_curve
+      );    
+    });
+
     
     thisEngine.addCommand("volume", "if", { arg msg;
       var voice = msg[1] - 1;
@@ -1216,21 +1417,16 @@ EGlut {
       },"/sc_osc/set_sample_position");
     );   
 
-    osc_funcs.put("clear_samples",
-      OSCFunc.new({ |msg,time,addr,recvPort|
-        var voice=msg[1];
-        var sample_mode=msg[2];
-        var pct=msg[3];
-        (["clear samples",voice,sample_mode,pct]).postln;
-      },"/sc_osc/clear_samples");
-    );   
-
     osc_funcs.put("set_mode",
       OSCFunc.new({ |msg,time,addr,recvPort|
         var voice=msg[1];
-        var mode=msg[2]; // 0: off, 1: live, 2: recorded
+        var mode=msg[2]; // 0: live, 1: recorded
+        var buf_array_ix;
         (["set mode",voice,mode]);
         gvoices[voice].set(\mode, mode);
+
+        if (mode < 1, { buf_array_ix = 0 }, { buf_array_ix = 1 });
+        waveformer.stopWaveformGeneration(buf_array_ix,voice);        
       },"/sc_osc/set_mode");
     );   
 
@@ -1242,7 +1438,7 @@ EGlut {
         // var rec_phase=msg[4];
         gvoices[voice].set(\buf, live_buffers[voice]);
         gvoices[voice].set(\buf2, live_buffers[voice+ngvoices]);
-        gvoices[voice].set(\mode, 1);
+        gvoices[voice].set(\mode, 0);
         this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length);
         // this.setBufStartEnd(voice,live_buffers[voice],2,sample_start,sample_length,rec_phase);
       },"/sc_osc/granulate_live");
@@ -1314,9 +1510,9 @@ EGlut {
       var sample_start = msg[5];
       var sample_length = msg[6];
       var buf_array_ix;
-      if (mode < 2, { buf_array_ix = 0 }, { buf_array_ix = 1 });
+      if (mode < 1, { buf_array_ix = 0 }, { buf_array_ix = 1 });
       if (voice == active_voice,{
-      // (["waveformer.queueWaveformGeneration",mode,live_buffers[0],buf_array_ix, mode,voice]).postln;
+      // (["waveformer.queueWaveformGeneration",voice,mode,live_buffers[0],buf_array_ix]).postln;
         waveformer.queueWaveformGeneration(buf_array_ix,voice,sample_start,sample_length);        
       });
     }, "/queue_waveform_generation");
@@ -1361,7 +1557,7 @@ EGlut {
       levels.do({ arg val; val.free; });
       rec_phases.free;
       effect.free;
-      effectBus.free;
+      effectSendBus.free;
       waveformer.free;
       pg.free;
       "free done!!!".postln;

@@ -12,7 +12,7 @@ e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 -- of voice-only params
 MIN_SAMPLE_LENGTH = 1
 MAX_GRAIN_SIZE = 5
-e.start_scene_params_at = 10
+e.start_scene_params_at = 11
 e.param_list={
   "voice_params",
   "sample_start",
@@ -21,16 +21,18 @@ e.param_list={
   "sample",
   "live_rec_level",
   "live_pre_level",
+  "live_source",
   "mix_live_rec",
   "scene_params",
   "play",
-  "volume","send","ptr_delay","speed","seek","size",
-  "density","density_beat_divisor","density_phase_sync","density_phase_sync_one_shot",
-  "pitch","spread_sig",
+  "volume","send","send_lag","send_lag_curve","ptr_delay","speed","speed_lag","speed_lag_curve","seek","size","size_lag","size_lag_curve",
+  "density","density_lag","density_lag_curve",
+  "density_beat_divisor","density_phase_sync","density_phase_sync_one_shot",
+  "pitch","pitch_lag","pitch_lag_curve","spread_sig",
   "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
   "jitter",
   "fade","attack_time","decay_time","env_shape",
-  "cutoff","q","pan","spread_pan",
+  "cutoff","cutoff_lag","cutoff_lag_curve","q","pan","pan_lag","pan_lag_curve","spread_pan","spread_pan_lag","spread_pan_lag_curve",
   "subharmonics","overtones","overtone1","overtone2"
 }
 e.param_list_echo={"echo_volume","echo_mod_freq","echo_mod_depth","echo_fdbk","echo_diff","echo_damp","echo_size","echo_time"}
@@ -40,6 +42,14 @@ e.scene_labels={"a","b","c","d"}
 e.active_scenes={}
 for i=1,e.num_voices do
   e.active_scenes[i]=1
+end
+
+function e.find_param_name(name)
+  local pname
+  for i=1,#e.param_list do
+    if e.param_list[i] == name then pname = name end
+  end
+  return pname
 end
 
 function e.enc_debouncer(callback,debounce_time)
@@ -105,6 +115,7 @@ function deep_copy(orig, copies)
   else -- number, string, boolean, etc
       copy = orig
   end
+  print("DC DONE")
   return copy
 end
 
@@ -254,77 +265,59 @@ function e:setup_params()
       if value + params:get(i.."sample_length") > self.max_buffer_length then 
         params:set(i.."sample_start", self.max_buffer_length - params:get(i.."sample_length"))
       end
-      -- local sample_mode = params:get(i.."sample_mode")
-      -- local show_waveform_ix = sample_mode < 3 and (i * 2 - 1) or (i * 2)
-      -- local show_waveform_name = waveform_names[show_waveform_ix]
-      -- waveforms[show_waveform_name]:clear_samples()
-  
       local function callback_func()
         local sample_start = params:get(i.."sample_start")
         local sample_length = params:get(i.."sample_length")
         osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
         
-        if params:get(i.."sample_mode") == 3 then
-          -- set_sample_duration(i,)
+        if params:get(i.."sample_mode") == 2 then
           on_eglut_file_loaded(i)
         end
       end
-      -- callback_func()
       clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
-    -- params:add_control(i.."sample_length","sample length",controlspec.new(0.1,self.max_buffer_length,"exp",0.1,10,"s",0.1/self.max_buffer_length))
     params:add_control(i.."sample_length","sample length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
       if value + params:get(i.."sample_start") > self.max_buffer_length then 
         params:set(i.."sample_length", self.max_buffer_length - params:get(i.."sample_start"))
       end
-      -- local sample_mode = params:get(i.."sample_mode")
-      -- local show_waveform_ix = sample_mode < 3 and (i * 2 - 1) or (i * 2)
-      -- local show_waveform_name = waveform_names[show_waveform_ix]
-      -- waveforms[show_waveform_name]:clear_samples()
   
       local function callback_func()
         local sample_start = params:get(i.."sample_start")
         local sample_length = params:get(i.."sample_length")
         osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
         
-        if params:get(i.."sample_mode") == 3 then
-          -- set_sample_duration(i,)
+        if params:get(i.."sample_mode") == 2 then
           on_eglut_file_loaded(i)
         end
       end
       -- callback_func()
       clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
-    local sample_modes={"off","live stream","recorded"}
-    params:add_option(i.."sample_mode","sample mode",sample_modes,i==1 and 2 or 1)
+    local sample_modes={"live stream","recorded"}
+    params:add_option(i.."sample_mode","sample mode",sample_modes,1)
     params:set_action(i.."sample_mode",function(mode)
       local mode_ix
-      if sample_modes[mode]=="off" then
+      if sample_modes[mode]=="live stream" then
         mode_ix = 0
-        params:set(i.."play"..params:get(i.."scene"),1)
-        print("off",i,params:get(i.."scene"))
-      elseif sample_modes[mode]=="live stream" then
-        mode_ix = 1
-        params:set(i.."play"..params:get(i.."scene"),2)
+        -- params:set(i.."play"..params:get(i.."scene"),2)
         self:granulate_live(i)
       elseif sample_modes[mode]=="recorded" then
         local recorded_file = params:get(i.."sample")
-        mode_ix = 2
+        mode_ix = 1
         if recorded_file ~= "-" then
           e:load_file(i,e.active_scenes[i],recorded_file)            
-          params:set(i.."play"..params:get(i.."scene"),2)
+          -- params:set(i.."play"..params:get(i.."scene"),2)
         else
           print("no file selected to granulate")
           params:set(i.."play"..params:get(i.."scene"),1)
-          -- params:set(i.."play"..params:get(i.."scene"),1)
         end
       end
       osc.send( { "localhost", 57120 }, "/sc_osc/set_mode",{i-1, mode_ix})
     end)
     params:add_file(i.."sample","sample")
     params:set_action(i.."sample",function(file)
-      if params:get(i.."sample_mode") == 3 then
+      if params:get(i.."sample_mode") == 2 then
         print("sample ",i,e.active_scenes[i],file)
         if file~="-" then
           e:load_file(i,e.active_scenes[i],file)
@@ -351,18 +344,39 @@ function e:setup_params()
     end)
 
     params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
-  
+    
+    if i == 1 then
+      params:add_option(i.."live_source","live source",{"external"},1)
+    else
+      local sources = {"external"}
+      for ix=2,i do
+        table.insert(sources,"voice " .. (ix-1))
+      end
+      if i == 4 then
+        table.insert(sources,"effect")
+      end  
+      params:add_option(i.."live_source","live source",sources,1)
+    end  
+    
+    params:set_action(i.."live_source", function(x) 
+      local engine_options = {"in"}
+      for v=0,self.num_voices-2 do
+        table.insert(engine_options,"voice"..v)
+      end
+      table.insert(engine_options,"effect")
+      local source = engine_options[x]
+      print(i,source)
+      engine.live_source(i,source)
+    end)
+    
+
     ------------------- per scene params -------------------
 
     params:add_separator(i.."scene_params","per scene params")
     for scene=1,e.num_scenes do
       params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 
-        if params:get(i.."sample_mode") > 1 then
-          engine.gate(i,x-1) 
-        else
-          engine.gate(i,0) 
-        end
+        engine.gate(i,x-1) 
       end)
 
       params:add_control(i.."volume"..scene,"volume",controlspec.new(0,10.0,"lin",0.05,1,"",0.05/10))
@@ -377,6 +391,12 @@ function e:setup_params()
 
       params:add_control(i.."send"..scene,"effect send",controlspec.new(0.0,1.0,"lin",0.01,1))
       params:set_action(i.."send"..scene,function(value) engine.send(i,value) end)
+
+      params:add_control(i.."send_lag"..scene,"send lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."send_lag"..scene,function(value) engine.send_lag(i,value) end)
+
+      params:add_control(i.."send_lag_curve"..scene,"send lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."send_lag_curve"..scene,function(value) engine.send_lag_curve(i,value) end)
 
       params:add_control(i.."ptr_delay"..scene,"pointer sync-delay",controlspec.new(0,2,"lin",0.001,0.2,"",0.01/2))
       params:set_action(i.."ptr_delay"..scene,function(value) 
@@ -399,24 +419,16 @@ function e:setup_params()
         end
       end
       params:add_control(i.."speed"..scene,"speed",controlspec.new(-5.0,5.0,"lin",0.01,1,"",0.01/1))
-      -- params:add_control(i.."speed"..scene,"speed",controlspec.new(-2.0,2.0,"lin",0.1,0,"",0.1/4))
-      
-      params:set_action(i.."speed"..scene,function(value) 
-        local function callback_func()
-          engine.speed(i,value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-        -- clock.run(speed_check,value,i,scene)
-        speed_check(value,i,scene)
-      end)
+      params:set_action(i.."speed"..scene,function(value) engine.speed(i,value) speed_check(value,i,scene) end)
+
+      params:add_control(i.."speed_lag"..scene,"speed lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."speed_lag"..scene,function(value) engine.speed_lag(i,value) end)
+
+      params:add_control(i.."speed_lag_curve"..scene,"speed lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."speed_lag_curve"..scene,function(value) engine.speed_lag_curve(i,value) end)
 
       params:add_control(i.."seek"..scene,"seek",controlspec.new(0,1,"lin",0.001,0,"",0.001/1,true))
-      params:set_action(i.."seek"..scene,function(value) 
-        local function callback_func()
-          engine.seek(i,util.clamp(value,0,1)) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."seek"..scene,function(value) engine.seek(i,util.clamp(value,0,1)) end)
 
       -- note the size values sent to SuperCollider are  1/10 the value of the parameter
       params:add_control(i.."size"..scene,"size",controlspec.new(0.1,MAX_GRAIN_SIZE,"exp",0.01,1,"",0.01/10))
@@ -434,6 +446,12 @@ function e:setup_params()
         end
         clock.run(e.enc_debouncer,callback_func,0.1)
       end)
+      
+      params:add_control(i.."size_lag"..scene,"size lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."size_lag"..scene,function(value) engine.size_lag(i,value) end)
+
+      params:add_control(i.."size_lag_curve"..scene,"size lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."size_lag_curve"..scene,function(value) engine.size_lag_curve(i,value) end)
 
       params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",0.1,4,"/beat",1/400))
       params:set_action(i.."density"..scene,function(value) 
@@ -444,6 +462,24 @@ function e:setup_params()
         local p=params:lookup_param(i.."size"..scene)
         p:bang()
       end)
+
+      params:add_control(i.."density_lag"..scene,"density lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."density_lag"..scene,function(value) 
+        local function callback_func()
+          engine.density_lag(i,value) 
+        end
+        clock.run(e.enc_debouncer,callback_func,0.1)        
+      end)
+
+      params:add_control(i.."density_lag_curve"..scene,"density lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."density_lag_curve"..scene,function(value) 
+        local function callback_func()
+          engine.density_lag_curve(i,value) 
+        end
+        clock.run(e.enc_debouncer,callback_func,0.1)        
+      end)
+
+
       params:add_control(i.."density_beat_divisor"..scene,"density beat div",controlspec.new(1,16,'lin',1,1,"",1/16))
       params:set_action(i.."density_beat_divisor"..scene,function() 
         local p=params:lookup_param(i.."density"..scene)
@@ -461,13 +497,14 @@ function e:setup_params()
       end)
       
       params:add_control(i.."pitch"..scene,"pitch",controlspec.new(-48,48,"lin",0.1,0,"note",1/960))
-      params:set_action(i.."pitch"..scene,function(value) 
-        local function callback_func()
-          engine.pitch(i,math.pow(0.5,-value/12)) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."pitch"..scene,function(value) engine.pitch(i,math.pow(0.5,-value/12)) end)
       
+      params:add_control(i.."pitch_lag"..scene,"pitch lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."pitch_lag"..scene,function(value) engine.pitch_lag(i,value) end)
+
+      params:add_control(i.."pitch_lag_curve"..scene,"pitch lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."pitch_lag_curve"..scene,function(value) engine.pitch_lag_curve(i,value) end)
+
       params:add_taper(i.."spread_sig"..scene,"spread sig",0,1,0)
       params:set_action(i.."spread_sig"..scene,function(value) 
         local function callback_func()
@@ -566,6 +603,12 @@ function e:setup_params()
         clock.run(e.enc_debouncer,callback_func,0.1)        
       end)
       
+      params:add_control(i.."cutoff_lag"..scene,"cutoff lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."cutoff_lag"..scene,function(value) engine.cutoff_lag(i,value) end)
+          
+      params:add_control(i.."cutoff_lag_curve"..scene,"cutoff lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."cutoff_lag_curve"..scene,function(value) engine.cutoff_lag_curve(i,value) end)
+
       params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.01,1.0,"exp",0.01,0.2,"",0.01/1))
       params:set_action(i.."q"..scene,function(value) 
         local function callback_func()
@@ -577,19 +620,31 @@ function e:setup_params()
       params:add_control(i.."pan"..scene,"pan",controlspec.new(-1,1,"lin",0.01,0,"",0.01/1))
       params:set_action(i.."pan"..scene,function(value) engine.pan(i,value) end)
 
+      params:add_control(i.."pan_lag"..scene,"pan lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."pan_lag"..scene,function(value) engine.pan_lag(i,value) end)
+
+      params:add_control(i.."pan_lag_curve"..scene,"pan lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."pan_lag_curve"..scene,function(value) engine.pan_lag_curve(i,value) end)
+
       params:add_taper(i.."spread_pan"..scene,"spread pan",0,100,0,0,"%")
       params:set_action(i.."spread_pan"..scene,function(value) engine.spread_pan(i,value/100) end)
       
+      params:add_control(i.."spread_pan_lag"..scene,"spread pan lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
+      params:set_action(i.."spread_pan_lag"..scene,function(value) engine.spread_pan_lag(i,value) end)
+
+      params:add_control(i.."spread_pan_lag_curve"..scene,"spread pan lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
+      params:set_action(i.."spread_pan_lag_curve"..scene,function(value) engine.spread_pan_lag_curve(i,value) end)
+
       params:add_control(i.."subharmonics"..scene,"subharmonic vol",controlspec.new(0.00,1.00,"lin",0.01,0))
       params:set_action(i.."subharmonics"..scene,function(value) engine.subharmonics(i,value) end)
       
-      params:add_control(i.."overtones"..scene,"overtones vol",controlspec.new(0.00,1.00,"lin",0.01,0))
+      params:add_control(i.."overtones"..scene,"overtones vol",controlspec.new(0.00,1,"lin",0.01,0))
       params:set_action(i.."overtones"..scene,function(value) engine.overtones(i,value) end)
 
-      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1.00,4.00,"lin",1,2))
+      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1,8,"lin",1))
       params:set_action(i.."overtone1"..scene,function(value) engine.overtone1(i,value) end)
 
-      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1.00,4.00,"lin",1,4))
+      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1,8,"lin",1))
       params:set_action(i.."overtone2"..scene,function(value) engine.overtone2(i,value) end)
       
       -- params:add_text(i.."pattern"..scene,"pattern","")

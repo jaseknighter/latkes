@@ -20,6 +20,8 @@ key new features:
 * per voice low pass filter
 * 16n support build-in 
 
+* IMPORTANT NOTE ABOUT ECHO (GREYHOLE)....and memory 
+
 # requirements
 * norns
 * midi-controller (optional)
@@ -28,7 +30,7 @@ key new features:
 * E1: switch between screens
 * E2: select control
 * E3: change control
-* K1+E3: record a param (2nd page only)
+* K1+E3: record a param (2nd screen only)
 
 the script has two screens: waveform view and a gesture recorder view
 
@@ -53,6 +55,16 @@ while most voice parameters can be set per voice and per scene, a few are only c
 
 ## gesture recorder view
 
+### params with lag
+density
+size
+spread pan
+cutoff
+send
+pitch
+speed
+pan
+
 ### setup
 each scene of each voice has can have its own gesture recorder settings. before using the gesture recorder, params need to be configured in the PARAMs menu. 
 
@@ -62,17 +74,24 @@ to setup the gesture recorders for a voice/scene:
 * select the scene to configure (a-d)
 * set up to eight parameters to the "on" position
 
-then, the selected parameters can be controlled from the 2nd page of the script's ui or from the PARAMS menu.
+then, the selected parameters can be controlled from the 2nd screen of the script's ui or from the PARAMS menu.
 
 after setting up params, to record a gesture:
 
-* go to the gesture recorder page
+* go to the gesture recorder screen
 * select one of the eight param's 
 * with K1+E3, record a gesture
   * recording starts when E3 is turned for the first time
   * recording stops when K1 is released
 
 after a gesture has been recorded, loop (L) and play (P) controls appear in the ui below the record (R) control. 
+
+## global reflector controls
+
+* k2: stop all reflectors playing
+* k3: start all reflectors playing
+* k1+k2: stop all reflector looping
+* k1+k3: start all reflector looping
 
 # install
 from maiden:
