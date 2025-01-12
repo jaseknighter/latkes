@@ -27,6 +27,10 @@ function fp_grid.Key:new()
     return k
 end
 
+--------------------------------------------------
+--- key setters
+--------------------------------------------------
+
 function fp_grid.set_playing(col_ix,row_ix)
     local voice = params:get("active_voice")
     local scene = params:get("active_scene")
@@ -35,7 +39,7 @@ function fp_grid.set_playing(col_ix,row_ix)
     if lp.voices then
         local voices = fp_grid.get_multipress('voices')
         for mvoice=1,#voices do
-            local scene = screens.p2ui.prev_scenes[mvoice]
+            local scene = screens.p2ui.scenes[mvoice]
             params:set(voices[mvoice][2] .. "play" .. scene,playing)
         end
     elseif lp.scenes then
@@ -101,7 +105,7 @@ function fp_grid.set_reflector_states(col_ix,row_ix,x,y,selector)
             local voice = selectors[sel][2]
             for ref_ix=1,get_num_reflectors(voice,scene) do
                 -- params:set(selectors[rs][2] .. selector .. scene,playing)
-                local scene = screens.p2ui.prev_scenes[voice]
+                local scene = screens.p2ui.scenes[voice]
                 local reflector_id = voice.."-"..ref_ix..selector..scene
                 local state = params:get(reflector_id)
                 params:set(reflector_id,state == 1 and 2 or 1)
@@ -129,33 +133,29 @@ function fp_grid.clear_reflector_selector()
     fp_grid.key_data.reflector_selector = nil
 end
 
-function fp_grid.get_reflector(col_ix,row_ix)
-    local voice = params:get("active_voice")
-    local scene = params:get("active_scene")
-    local reflector_ix
-    local reflector_table = reflectors_selected_params[voice][scene][col_ix]
-    local reflector_id = reflector_table.id
-    local reflector_name = reflector_table.name
-    local reflector_pressed_ix = fp_grid.key_data.selected_reflectors[col_ix]
-    if reflector_pressed_ix then 
-        -- set the param
-    elseif reflectors_selected_params[voice][scene][col_ix] then
-      params:get(reflector_id)
-    end
-    return reflector_ix
-end
+-- function fp_grid.get_reflector(col_ix,row_ix)
+--     local voice = params:get("active_voice")
+--     local scene = params:get("active_scene")
+--     local reflector_ix
+--     local reflector_table = reflectors_selected_params[voice][scene][col_ix]
+--     local reflector_id = reflector_table.id
+--     local reflector_name = reflector_table.name
+--     local reflector_pressed_ix = fp_grid.key_data.selected_reflectors[col_ix]
+--     if reflector_pressed_ix then 
+--         -- set the param
+--     elseif reflectors_selected_params[voice][scene][col_ix] then
+--       params:get(reflector_id)
+--     end
+--     return reflector_ix
+-- end
 
-function fp_grid.set_reflector(col_ix,row_ix,x,y)
-    print("set reflector",col_ix,row_ix,x,y)
-    local voice = params:get("active_voice")
-    local scene = params:get("active_scene")    
-    local reflector = reflectors_selected_params[voice][scene][x]
-    if reflector then
-        --set grid display data
-        fp_grid.key_data.selected_reflectors[x] = row_ix
-        fp_grid.key_data[x][y].fader_val=10
-        --set reflector param
-        local reflector_id = reflector.id
+function fp_grid.set_reflector_param(voice,scene,reflector, row_ix)
+    --set grid display data
+    --set reflector param
+    local reflector_name = reflector.name
+    local reflector_id = reflector.id
+    local override = grid_overrides[reflector_name]
+    if override == nil then
         if params:t(reflector_id) ~= 3 and params:t(reflector_id) ~= 5 then
             local reflector_range = params:get_range(reflector_id)
             if reflector_range[1] and reflector_range[2] then
@@ -166,6 +166,46 @@ function fp_grid.set_reflector(col_ix,row_ix,x,y)
             local reflector_val = util.linlin(1,7,1, 0,row_ix)
             params:set_raw(reflector_id,reflector_val)
         end
+    else
+        local reflector_val = override[reflector_id][row_ix]
+        params:set(reflector_id,reflector_val)
+    end
+end
+
+function fp_grid.set_reflector(col_ix,row_ix,x,y)
+    -- print("set reflector",col_ix,row_ix,x,y)
+    local voice = params:get("active_voice")
+    local scene = params:get("active_scene")    
+    local reflector = reflectors_selected_params[voice][scene][x]
+    
+    if reflector then
+        local lp = fp_grid.key_data.long_presses
+        if lp.voices then
+            local voices = fp_grid.get_multipress('voices')
+            for mvoice=1,#voices do
+                local voice = voices[mvoice][2]
+                local scene = screens.p2ui.scenes[mvoice]
+                local reflector = reflectors_selected_params[voice][scene][x]
+                if reflector then 
+                    fp_grid.set_reflector_param(voice,scene,reflector,row_ix)
+                end
+            end
+        elseif lp.scenes then
+            local scenes = fp_grid.get_multipress('scenes')
+            for mscene=1,#scenes do
+                local scene = scenes[mscene][2]
+                local reflector = reflectors_selected_params[voice][scene][x]
+                if reflector then 
+                    fp_grid.set_reflector_param(voice,scene,reflector,row_ix)
+                end
+            end
+        else
+            fp_grid.set_reflector_param(voice,scene,reflector,row_ix)
+        end
+
+        fp_grid.key_data.selected_reflectors[reflector] = row_ix
+        fp_grid.key_data[x][y].fader_val=10
+
         screens:set_selected_ui_area(x*4,2)
         screens:set_active_reflector()
         fp_grid.set_reflector_selector(x,row_ix)
@@ -189,11 +229,11 @@ function fp_grid.get_lag(col_ix,row_ix)
         if params:t(plag_id) ~= 3 and params:t(plag_id) ~= 5 then
             local range = params:get_range(plag_id)
             pval = params:get(plag_id)
-            kval = util.linlin(range[1], range[2],7,1,pval)
+            kval = util.linlin(range[1], range[2],4,1,pval)
             kval = util.round(kval)
         else
             pval = params:get_raw(plag_id)
-            kval = util.linlin(0,1,7,1,pval)
+            kval = util.linlin(0,1,4,1,pval)
             kval = util.round(kval)
         end
         return kval
@@ -219,16 +259,131 @@ function fp_grid.set_lag(col_ix,row_ix)
         local plag_id = voice..plag_name..scene
         if params:t(plag_id) ~= 3 and params:t(plag_id) ~= 5 then
             local range = params:get_range(plag_id)
-            local val = util.linlin(1,7,range[2], range[1],row_ix)
+            local val = util.linlin(1,4,range[2], range[1],row_ix)
             params:set(plag_id,val)
             print(reflector_range[1], reflector_range[2],row_ix,reflector_val)
         else
-            local val = util.linlin(1,7,1, 0,row_ix)
+            local val = util.linlin(1,4,1, 0,row_ix)
             params:set_raw(plag_id,val)
         end
     end
 end
 
+function fp_grid.get_density_phase_sync_one_shot(col_ix,row_ix)
+    return fp_grid.key_data.density_phase_sync_one_shot 
+end
+
+function fp_grid.set_density_phase_sync_one_shot(col_ix,row_ix,x,y)
+    local voice = params:get("active_voice")
+    local scene = params:get("active_scene")
+    
+    params:set(voice .. 'density_phase_sync_one_shot' .. scene,voice-1)
+    fp_grid.key_data.density_phase_sync_one_shot = col_ix
+
+end
+
+function fp_grid.clear_density_phase_sync_one_shot(col_ix,row_ix)
+    fp_grid.key_data.density_phase_sync_one_shot = nil
+end
+
+function fp_grid.get_rec_play_sync(col_ix,row_ix)
+    return fp_grid.key_data.rec_play_sync
+end
+
+function fp_grid.set_rec_play_sync(col_ix,row_ix)
+    local voice = params:get("active_voice")
+    local scene = params:get("active_scene")
+
+
+    local lp = fp_grid.key_data.long_presses
+    if lp.voices then
+        local voices = fp_grid.get_multipress('voices')
+        for mvoice=1,#voices do
+            local scene = screens.p2ui.scenes[mvoice]
+            params:set(voices[mvoice][2] .. 'rec_play_sync' .. scene,playing)
+        end
+    elseif lp.scenes then
+        local scenes = fp_grid.get_multipress('scenes')
+        for mscene=1,#scenes do
+            params:set(voice .. 'rec_play_sync' .. scenes[mscene][2],playing)
+        end
+    else 
+        params:set(voice .. 'rec_play_sync' .. scene,1)        
+    end
+    fp_grid.key_data.rec_play_sync = col_ix
+end
+
+function fp_grid.clear_rec_play_sync(col_ix,row_ix)
+    fp_grid.key_data.rec_play_sync = nil
+end
+
+
+function fp_grid.get_volume_send(col_ix,row_ix,x,y)
+    -- print("set reflector",col_ix,row_ix,x,y)
+    local voice = params:get("active_voice")
+    local scene = params:get("active_scene")    
+    local param = col_ix == 11 and "volume" or "send"
+    local pval = params:get(voice..param..scene)
+    pval = util.linlin(0,1,8,1,pval)
+    return util.round(pval)
+    
+end
+
+function fp_grid.set_volume_send(col_ix,row_ix,x,y)
+    -- print("set reflector",col_ix,row_ix,x,y)
+    local pval = util.linlin(1,8,1,0,row_ix)
+    local param = x == 11 and "volume" or "send"
+
+    local lp = fp_grid.key_data.long_presses
+    if lp["voices"] then
+        local voices = lp["voices"]
+        for mvoice=1,#voices do
+            local scene = screens.p2ui.scenes[mvoice]
+            params:set(voices[mvoice][2]..param..scene,pval)
+        end
+    elseif lp["scenes"] then
+        local voice = params:get("active_voice")
+        local scenes = lp["scenes"]
+        for mscene=1,#scenes do
+            params:set(voice..param..scenes[mscene][2],pval)
+        end
+    else
+        local voice = params:get("active_voice")
+        local scene = params:get("active_scene")    
+        params:set(voice..param..scene,pval)
+    end
+end
+
+function fp_grid.get_rec_pre_levels(col_ix,row_ix,x,y)
+    local voice = params:get("active_voice")
+    local param = col_ix == 13 and "live_rec_level" or "live_pre_level"
+    local pval = params:get(voice..param)
+    pval = util.linlin(0,1,6,1,pval)
+    return util.round(pval)
+end
+
+function fp_grid.set_rec_pre_levels(col_ix,row_ix,x,y)
+    -- print("set reflector",col_ix,row_ix,x,y)
+    local pval = util.linlin(1,6,1,0,row_ix)
+    local param = x == 13 and "live_rec_level" or "live_pre_level"
+
+    local lp = fp_grid.key_data.long_presses
+    if lp["voices"] then
+        local voices = lp["voices"]
+        for mvoice=1,#voices do
+            local scene = screens.p2ui.scenes[mvoice]
+            params:set(voices[mvoice][2]..param..scene,pval)
+        end
+    else
+        local voice = params:get("active_voice")
+        params:set(voice..param,pval)
+    end
+end
+
+
+--------------------------------------------------
+---
+--------------------------------------------------
 function fp_grid:get_ui_group(col,row)
     for group_name, group_data in pairs(fp_grid.ui_groups) do
         local col_start    = group_data.col_start
@@ -251,7 +406,6 @@ function fp_grid.set_multipress(group,colrow)
     local key_slot = colrow == "col" and 1 or 2
     local keys = {}
     for key=1,#lp[group] do
-        print("multi",#lp[group],lp[group][key][key_slot])
         table.insert(keys,lp[group][key][key_slot])
     end
 end
@@ -466,20 +620,94 @@ function fp_grid.init()
             -- on_release=fp_grid.clear_reflector_selector,
             direction="h"
         },
-        lag = {
+        -- lag = {
+        --     led_on=15,
+        --     led_off=3,
+        --     col_start=9,
+        --     col_end=9,
+        --     row_start=1,
+        --     row_end=4,
+        --     k_type="group_single_temp",
+        --     k_selector=fp_grid.get_lag,
+        --     on_press=fp_grid.set_lag,
+        --     on_release=fp_grid.clear_lag,
+        --     direction="v"
+        -- },        
+        density_phase_sync_one_shot = {
             led_on=15,
-            led_off=3,
-            col_start=10,
-            col_end=10,
-            row_start=1,
-            row_end=7,
+            led_off=8,
+            col_start=13,
+            col_end=13,
+            row_start=8,
+            row_end=8,
             k_type="group_single_temp",
-            k_selector=fp_grid.get_lag,
-            on_press=fp_grid.set_lag,
-            on_release=fp_grid.clear_lag,
+            k_selector=fp_grid.get_density_phase_sync_one_shot,
+            on_press=fp_grid.set_density_phase_sync_one_shot,
+            on_release=fp_grid.clear_density_phase_sync_one_shot,
+            direction=nil
+        },
+        rec_play_sync = {
+            led_on=15,
+            led_off=5,
+            col_start=14,
+            col_end=14,
+            row_start=8,
+            row_end=8,
+            k_type="group_single_temp",
+            k_selector=fp_grid.get_rec_play_sync,
+            on_press=fp_grid.set_rec_play_sync,
+            on_release=fp_grid.clear_rec_play_sync,
+            direction=nil
+        },
+        volume = {
+            led_on=15,
+            led_off=5,
+            col_start=11,
+            col_end=11,
+            row_start=1,
+            row_end=8,
+            k_type="group_single",
+            k_selector=fp_grid.get_volume_send,
+            on_release=fp_grid.set_volume_send,
             direction="v"
         },
-
+        send = {
+            led_on=15,
+            led_off=5,
+            col_start=12,
+            col_end=12,
+            row_start=1,
+            row_end=8,
+            k_type="group_single",
+            k_selector=fp_grid.get_volume_send,
+            on_release=fp_grid.set_volume_send,
+            direction="v"
+        },
+        live_rec_level = {
+            led_on=15,
+            led_off=5,
+            col_start=13,
+            col_end=13,
+            row_start=1,
+            row_end=6,
+            k_type="group_single",
+            k_selector=fp_grid.get_rec_pre_levels,
+            on_release=fp_grid.set_rec_pre_levels,
+            direction="v"
+        },
+        live_pre_level = {
+            led_on=15,
+            led_off=5,
+            col_start=14,
+            col_end=14,
+            row_start=1,
+            row_end=6,
+            k_type="group_single",
+            k_selector=fp_grid.get_rec_pre_levels,
+            on_release=fp_grid.set_rec_pre_levels,
+            direction="v"
+        },
+       
     }
     
     for col=1,MAX_REFLECTORS_PER_SCENE do
@@ -492,7 +720,6 @@ function fp_grid.init()
             row_start=1,
             row_end=7,
             k_type="group_single",
-            -- k_selector=fp_grid.set_reflector_base,
             on_release=fp_grid.set_reflector,
             direction="v"
         }
@@ -514,20 +741,38 @@ function fp_grid.display_reflectors()
         local reflector = reflectors_selected_params[voice][scene][col_ix]
         if reflector then
             local reflector_id = reflector.id
-            local selected_key
-            if params:t(reflector_id) ~= 3 and params:t(reflector_id) ~= 5 then
-                local reflector_val = params:get(reflector_id)
-                local reflector_range = params:get_range(reflector_id)
-                selected_key = util.linlin(reflector_range[1],reflector_range[2],7,1,reflector_val)
-                selected_key = util.round(selected_key)
+            local selected_key, selected_key_rounded
+            local reflector_name = reflector.name                
+            local override = grid_overrides[reflector_name]
+            if override == nil then        
+                if params:t(reflector_id) ~= 3 and params:t(reflector_id) ~= 5 then
+                    local reflector_val = params:get(reflector_id)
+                    local reflector_range = params:get_range(reflector_id)
+                    selected_key = util.linlin(reflector_range[1],reflector_range[2],7,1,reflector_val)
+                    selected_key_rounded = util.round(selected_key)
+                else
+                    local reflector_val = params:get_raw(reflector_id)
+                    selected_key = util.linlin(0,1,7,1,reflector_val)
+                    selected_key_rounded = util.round(selected_key)
+                end
             else
-                local reflector_val = params:get_raw(reflector_id)
-                selected_key = util.linlin(0,1,7,1,reflector_val)
-                selected_key = util.round(selected_key)
+                for row_ix=1,7 do
+                    if selected_key_rounded then break end
+                    local reflector_val = params:get(reflector_id)
+                    selected_key = util.linlin(0,1,7,1,reflector_val)
+                    if row_ix == 1 and reflector_val >= override[reflector_id][row_ix] then 
+                        selected_key_rounded = 1
+                    elseif row_ix == 7 and reflector_val <= override[reflector_id][row_ix] then 
+                        selected_key_rounded = 7
+                    else
+                        if reflector_val >= override[reflector_id][row_ix] and reflector_val <= override[reflector_id][row_ix-1] then
+                            selected_key_rounded = row_ix
+                        end
+                    end
+                end
             end
-            
             for row_ix=1,7 do
-                if row_ix == selected_key then
+                if row_ix == selected_key_rounded then
                     fp_grid.key_data[col_ix][row_ix].led_target = group.led_on 
                 else
                     fp_grid.key_data[col_ix][row_ix].led_target = group.led_off 
@@ -543,6 +788,22 @@ function fp_grid.display_reflectors()
                     new_current = target
                 end
                 fp_grid.g:led(col_ix,row_ix,util.round(new_current))
+            end
+
+            -- for rows that aren't overrideen check for selected key values that are offset
+            if override == nil and selected_key ~= selected_key_rounded then
+                local offset_key 
+                if selected_key > selected_key_rounded then 
+                    offset_key = selected_key_rounded + 1
+                else 
+                    offset_key = selected_key_rounded - 1
+                end 
+                local offset_current = fp_grid.key_data[col_ix][offset_key].led_current
+                local active_current = fp_grid.key_data[col_ix][selected_key_rounded].led_current
+                local diff = math.abs(active_current-offset_current)
+                local offset_mult = math.abs(selected_key - selected_key_rounded)
+                local offset_led = math.floor((diff * offset_mult) + offset_current)
+                fp_grid.g:led(col_ix,offset_key,offset_led)
             end
         else -- reflector not configured, dim the reflector and reflector_selector  keys
             for row_ix=1,7 do
@@ -632,9 +893,9 @@ function fp_grid:display_ui_group(group_name,group)
                     -- local selector = reflector_count > 0 
                     if reflector_selector then
                         if reflector_tab or 
-                           group.p_selector == "record" or 
-                           group.p_selector == "loop" or 
-                           group.p_selector == "play" then
+                        group.p_selector == "record" or 
+                        group.p_selector == "loop" or 
+                        group.p_selector == "play" then
                             local p_id = voice.."-"..reflector_selector..group.p_selector..scene
                             local selector = params:get(p_id)
                             fp_grid.g:led(col_ix,row_ix, selector == 1 and 5 or 15)
@@ -674,13 +935,18 @@ function fp_grid:display_ui_group(group_name,group)
                         fp_grid.g:led(col_ix,row_ix,col == selector and group.led_on or group.led_off)
                     end
                 elseif group.k_selector then
-                    local selector = group.k_selector(col_ix,row_ix)
-                    -- print("sel: ",selector)
+                    local selector = group.k_selector(col_ix,row_ix,x,y)
                     if group.direction == "v" then
-                        -- print(group_name,col_ix,row_ix,col,row,selector)
-                        -- print(group_name,col_ix,row_ix,col,row,selector)
-                        fp_grid.g:led(col_ix,row_ix,row == selector and group.led_on or group.led_off)
+                        local voice = params:get("active_voice")
+                        if group_name == "send" and voice == eglut.num_voices then
+                            fp_grid.g:led(col_ix,row_ix,3)
+                        else
+                            fp_grid.g:led(col_ix,row_ix,row == selector and group.led_on or group.led_off)
+                        end
                     else
+                        -- if selector ~= nil then 
+                            -- print(group_name,col_ix,row_ix,col,row,selector)
+                        -- end
                         fp_grid.g:led(col_ix,row_ix,col == selector and group.led_on or group.led_off)
                     end
                 end

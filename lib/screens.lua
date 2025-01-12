@@ -17,7 +17,7 @@ function screens:init(args)
   self.p1ui.selected_ui_area_ix=2
   self.p1ui.selected_voice=1
   self.p1ui.selected_scene=1
-  self.p1ui.prev_scenes = {1,1,1,1}
+  self.p1ui.scenes = {1,1,1,1}
   self.p1ui.ui_areas = {"mode","voice","scene","sample_start","sample_length","play","flip"}
   self.p1ui.num_ui_areas=#self.p1ui.ui_areas
   self.p1ui.selected_ui_area=self.p1ui.ui_areas[self.p1ui.selected_ui_area_ix]      
@@ -27,7 +27,7 @@ function screens:init(args)
   self.p2ui.selected_ui_area_ix=2
   self.p2ui.selected_voice=1
   self.p2ui.selected_scene=1
-  self.p2ui.prev_scenes = {1,1,1,1}
+  self.p2ui.scenes = {1,1,1,1}
   self.p2ui.selected_reflector=nil  
   self.p2ui.ui_areas = {"mode","voice","scene"}
   for i=1,self.MAX_REFLECTORS_PER_SCENE do
@@ -118,12 +118,12 @@ end
 
 function screens:set_selected_ui_area(ix,screen)
   local active_screen = params:get("active_screen")
-  if (active_screen==1 or screen==1) and self.p1ui.ui_areas[ix] then
+  if ((active_screen==1 and screen == nil) or screen==1) and self.p1ui.ui_areas[ix] then
     self.p1ui.selected_ui_area_ix=ix
     self.p1ui.selected_ui_area=self.p1ui.ui_areas[ix]
     self.p2ui.selected_ui_area_ix=ix
     self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
-  elseif (active_screen==2 or screen==2) and self.p2ui.ui_areas[ix] then
+  elseif ((active_screen==2 and screen == nil) or screen==2) and self.p2ui.ui_areas[ix] then
     self.p2ui.selected_ui_area_ix=ix
     self.p2ui.selected_ui_area=self.p2ui.ui_areas[ix]
   end
@@ -376,7 +376,6 @@ function screens:enc(n,d)
 end
 
 function screens:draw_left_butons(ui_area, voice, scene)
-  local button_letters={"m","v","sc"}
   local button_size=((self.composition_bottom-self.composition_top)/3)
   local button_left = self.composition_left - button_size - 1
   screen.font_size(8)
@@ -419,9 +418,6 @@ function screens:draw_left_butons(ui_area, voice, scene)
     end
     -- screen.move(self.composition_right+button_size+4,button_top+6)
     -- screen.level(0)
-    screen.stroke()
-    screen.move(button_left-11,button_top+8)
-    screen.text(button_letters[button])
     screen.stroke()
   end
 end
@@ -613,11 +609,13 @@ function screens:draw_reflector_ui_elements(ui_area,voice,scene)
           top_label = top_label .. "-" .. button
         else 
           reflector_id=reflector_param.id
-          local param_value = params:get(reflector_id)
-          local param_max = params:get_range(reflector_id)[2]
-          param_value = util.round(param_value,0.01)
-          -- if param_max > 10 then
-          -- end
+          local param_value
+          if params:t(reflector_id) ~= 2 then
+            param_value = params:get(reflector_id)
+            param_value = util.round(param_value,0.01)
+          else
+            param_value = params:string(reflector_id)
+          end
           top_label = top_label .. ": " .. param_value
         end
       else
@@ -668,14 +666,14 @@ function screens:draw_waveform_ui_elements(voice,scene,playing)
   screen.move(self.composition_left,self.composition_top-4)
   if sample_start_selected then
     screen.level(15)  
-    top_label = "sample start"
+    top_label = "start"
     top_label = top_label .. ": " .. util.round(sample_start * max_buffer_length,0.01)
     screen.text(top_label)
     screen.move(start_pos,self.composition_bottom+4)
     screen.line_rel(0,5)
   elseif sample_length_selected then
     screen.level(15)  
-    top_label = "sample length"
+    top_label = "length"
     top_label = top_label .. ": " .. util.round(sample_length * max_buffer_length,0.01)
     screen.text(top_label)
   elseif play_selected then

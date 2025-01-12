@@ -1,11 +1,11 @@
-// Engine_Futurespast
+// Engine_Latkes
 
 // thanks to infinite digits for using envelopes to loop buffers writeup 
 // https://infinitedigits.co/tinker/sampler/
 
 
 // Inherit methods from CroneEngine
-Engine_Futurespast : CroneEngine {
+Engine_Latkes : CroneEngine {
   
   // var s;
   var osc_funcs;
@@ -21,6 +21,7 @@ Engine_Futurespast : CroneEngine {
     s=context.server;
 
     // ["memsize",s.options.memSize].postln;
+    s.options.memSize_(65536 * 4);
     // s.options.memSize=2**15; //65536
     // s.options.memSize=1024*256; 
     // s.options.memSize=1024*128; 
@@ -31,7 +32,7 @@ Engine_Futurespast : CroneEngine {
   }
 
   free {
-    "free Futurespast".postln;  
+    "free Latkes".postln;  
     ">>>>>>>>>>>>>>".postln;
     s.queryAllNodes;
 

@@ -6,7 +6,6 @@ local e={}
 e.inited = false
 e.all_param_ids   = {} 
 e.all_param_names = {}
-e.speed_magnets={-2,-1.5,-1,-0.5,0,0.5,1,1.5,2}
 
 -- IMPORTANT: start_scene_params_at should be equal to the number
 -- of voice-only params
@@ -19,13 +18,14 @@ e.param_list={
   "sample_length",
   "sample_mode",
   "sample",
+  "sample_gain",
   "live_rec_level",
   "live_pre_level",
   "live_source",
-  "mix_live_rec",
+  -- "mix_live_rec",
   "scene_params",
   "play",
-  "volume","send","send_lag","send_lag_curve","ptr_delay","speed","speed_lag","speed_lag_curve","seek","size","size_lag","size_lag_curve",
+  "volume","send","send_lag","send_lag_curve","rec_play_sync","speed","speed_lag","speed_lag_curve","seek","size","size_lag","size_lag_curve",
   "density","density_lag","density_lag_curve",
   "density_beat_divisor","density_phase_sync","density_phase_sync_one_shot",
   "pitch","pitch_lag","pitch_lag_curve","spread_sig",
@@ -52,19 +52,6 @@ function e.find_param_name(name)
   return pname
 end
 
-function e.enc_debouncer(callback,debounce_time)
-  -- if debounce_time then print("deb",debounce_time) end
-  callback()
-  -- debounce_time = debounce_time or 0.1
-  -- if enc_debouncing == false then
-  --   enc_debouncing = true
-  --   callback()
-  --   clock.sleep(debounce_time)
-  --   enc_debouncing = false
-  -- else
-  --   -- print("debouncing...skip...")
-  -- end
-end
 
 function e.table_concat(t1,t2,t1_start,t2_start)
   local concat_table={}
@@ -125,7 +112,7 @@ function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
   self.min_live_buffer_length = min_live_buffer_length or 0.1
-  self.max_buffer_length = max_buffer_length or 80
+  self.max_buffer_length = max_buffer_length or 30
   
 end
 
@@ -134,6 +121,7 @@ function e:on_sample_selected(voice,scene,file)
 end
 
 function e:bang(voice, scene, bangscope)
+  print("e bang")
   bangscope = bangscope or 1
   if bangscope == 1 then
     local start_voice=1
@@ -151,14 +139,17 @@ function e:bang(voice, scene, bangscope)
         else
           p=params:lookup_param(i..param_name)
         end
-        if p and p.t~=6 then p:bang() end
+        if p.t~=6 and p.name ~="seek" then 
+          p:bang() 
+          -- print("bang: ",i,param_name,scene)
+        end
       end
     end
   end
   if bangscope ~= 2 then
     for _,param_name in ipairs(e.param_list_echo) do
       local p=params:lookup_param(param_name..scene)
-      if p.t~=6 then 
+      if p.t~=6 and p.name ~="seek" then 
         p:bang() 
       end
     end
@@ -179,10 +170,7 @@ function e:get_gr_env_values(voice, scene)
 end
 
 local function update_grain_envelope(i,scene)
-  local function callback_func()
-    engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
-  end
-  clock.run(e.enc_debouncer,callback_func,0.1)
+  engine.gr_envbuf(i,table.unpack(e:get_gr_env_values(i,scene))) 
 end 
 
 
@@ -199,10 +187,11 @@ function e:load_file(voice,scene,file)
   local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
   engine.read(voice,file,sample_start,sample_length)
-  local mix_live_rec = params:get(voice.."mix_live_rec")
-  if mix_live_rec == 1 then
-    osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
-  end
+  -- local mix_live_rec = params:get(voice.."mix_live_rec")
+  -- if mix_live_rec == 1 then
+  --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
+  -- end
+  osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
 
   e:on_sample_selected(voice,scene,file)
 end
@@ -211,11 +200,13 @@ function e:granulate_live(voice)
   local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
   osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_start, sample_length})
-  local mix_live_rec = params:get(voice.."mix_live_rec")
-  if mix_live_rec == 1 then
-    local live_rec_level = params:get(voice.."live_rec_level")
-    osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
-  end
+  -- local mix_live_rec = params:get(voice.."mix_live_rec")
+  -- if mix_live_rec == 1 then
+  --   local live_rec_level = params:get(voice.."live_rec_level")
+  --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
+  -- end
+  local live_rec_level = params:get(voice.."live_rec_level")
+  osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
 end
 
 function e:update_scene(voice,scene)
@@ -260,42 +251,35 @@ function e:setup_params()
       scene=scene and scene or 1
       e:update_scene(i,scene)
     end)
-    params:add_control(i.."sample_start","sample start",controlspec.new(0,self.max_buffer_length,"lin",0.01,0,"s",0.01/self.max_buffer_length))
+    params:add_control(i.."sample_start","start",controlspec.new(0,self.max_buffer_length,"lin",0.01,0,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_start",function(value)
       if value + params:get(i.."sample_length") > self.max_buffer_length then 
         params:set(i.."sample_start", self.max_buffer_length - params:get(i.."sample_length"))
       end
-      local function callback_func()
-        local sample_start = params:get(i.."sample_start")
-        local sample_length = params:get(i.."sample_length")
-        osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
-        
-        if params:get(i.."sample_mode") == 2 then
-          on_eglut_file_loaded(i)
-        end
+      local sample_start = params:get(i.."sample_start")
+      local sample_length = params:get(i.."sample_length")
+      osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
+      
+      if params:get(i.."sample_mode") == 2 then
+        on_eglut_file_loaded(i)
       end
-      clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
-    params:add_control(i.."sample_length","sample length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
+    params:add_control(i.."sample_length","length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
       if value + params:get(i.."sample_start") > self.max_buffer_length then 
         params:set(i.."sample_length", self.max_buffer_length - params:get(i.."sample_start"))
       end
   
-      local function callback_func()
-        local sample_start = params:get(i.."sample_start")
-        local sample_length = params:get(i.."sample_length")
-        osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
-        
-        if params:get(i.."sample_mode") == 2 then
-          on_eglut_file_loaded(i)
-        end
+      local sample_start = params:get(i.."sample_start")
+      local sample_length = params:get(i.."sample_length")
+      osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
+      
+      if params:get(i.."sample_mode") == 2 then
+        on_eglut_file_loaded(i)
       end
-      -- callback_func()
-      clock.run(e.enc_debouncer,callback_func,0.1)        
     end)
     local sample_modes={"live stream","recorded"}
-    params:add_option(i.."sample_mode","sample mode",sample_modes,1)
+    params:add_option(i.."sample_mode","mode",sample_modes,1)
     params:set_action(i.."sample_mode",function(mode)
       local mode_ix
       if sample_modes[mode]=="live stream" then
@@ -324,6 +308,12 @@ function e:setup_params()
         end
       end
     end)
+    params:add_control(i.."sample_gain","sample gain",controlspec.new(0,10.0,"lin",0.05,1,"",0.05/10))
+    params:set_action(i.."sample_gain",function(value) 
+      local active_scene = params:get("active_scene")
+      local p = params:lookup_param(i.."volume"..active_scene)
+      p:bang()
+    end)
 
     params:add_control(i.."live_rec_level","live rec level",controlspec.new(0,1,"lin",0.01,1))
     params:set_action(i.."live_rec_level",function(value) 
@@ -343,7 +333,7 @@ function e:setup_params()
       params:set(i.."live_pre_level",live)
     end)
 
-    params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
+    -- params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
     
     if i == 1 then
       params:add_option(i.."live_source","live source",{"external"},1)
@@ -377,10 +367,16 @@ function e:setup_params()
       params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 
         engine.gate(i,x-1) 
+        print("set play",i,scene,x)
       end)
 
       params:add_control(i.."volume"..scene,"volume",controlspec.new(0,10.0,"lin",0.05,1,"",0.05/10))
       params:set_action(i.."volume"..scene,function(value)
+        
+        if params:get(i.."sample_mode") == 2 then
+          value = value * params:get(i.."sample_gain")
+        end
+        value = value <= 10 and value or 10
         engine.gain(i,value)
       end)
 
@@ -398,28 +394,16 @@ function e:setup_params()
       params:add_control(i.."send_lag_curve"..scene,"send lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
       params:set_action(i.."send_lag_curve"..scene,function(value) engine.send_lag_curve(i,value) end)
 
-      params:add_control(i.."ptr_delay"..scene,"pointer sync-delay",controlspec.new(0,2,"lin",0.001,0.2,"",0.01/2))
-      params:set_action(i.."ptr_delay"..scene,function(value) 
-        -- params:set(i.."speed"..scene,1)
-        engine.ptr_delay(i,value) 
-        
+      params:add_trigger(i.."rec_play_sync"..scene,"rec/play head sync")
+      params:set_action(i.."rec_play_sync"..scene,function() 
+        params:set(i.."speed"..scene,1)
+        engine.rec_play_sync(i,0)
       end)
-      -- params:add_control(i.."ptr_delay"..scene,"delay",controlspec.new(0.05,2,"lin",0.001,0.2,"",0.05/2))
-      -- params:set_action(i.."ptr_delay"..scene,function(value) engine.ptr_delay(i,1.29) end)
+      -- params:add_control(i.."rec_play_sync"..scene,"delay",controlspec.new(0.05,2,"lin",0.001,0.2,"",0.05/2))
+      -- params:set_action(i.."rec_play_sync"..scene,function(value) engine.rec_play_sync(i,1.29) end)
       
-      
-      local function speed_check(speed,voice,scene)
-        -- clock.sleep(0.1)
-        for i=1,#e.speed_magnets do
-          if speed ~= e.speed_magnets[i] and speed-0.1 < e.speed_magnets[i] and speed+0.1 > e.speed_magnets[i] then
-            params:set(voice.."speed"..scene,e.speed_magnets[i])
-            break
-          end
-          
-        end
-      end
       params:add_control(i.."speed"..scene,"speed",controlspec.new(-5.0,5.0,"lin",0.01,1,"",0.01/1))
-      params:set_action(i.."speed"..scene,function(value) engine.speed(i,value) speed_check(value,i,scene) end)
+      params:set_action(i.."speed"..scene,function(value) engine.speed(i,value) end)
 
       params:add_control(i.."speed_lag"..scene,"speed lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
       params:set_action(i.."speed_lag"..scene,function(value) engine.speed_lag(i,value) end)
@@ -428,23 +412,21 @@ function e:setup_params()
       params:set_action(i.."speed_lag_curve"..scene,function(value) engine.speed_lag_curve(i,value) end)
 
       params:add_control(i.."seek"..scene,"seek",controlspec.new(0,1,"lin",0.001,0,"",0.001/1,true))
+      params:set_save(i.."seek"..scene, false)
       params:set_action(i.."seek"..scene,function(value) engine.seek(i,util.clamp(value,0,1)) end)
 
       -- note the size values sent to SuperCollider are  1/10 the value of the parameter
       params:add_control(i.."size"..scene,"size",controlspec.new(0.1,MAX_GRAIN_SIZE,"exp",0.01,1,"",0.01/10))
       params:set_action(i.."size"..scene,function(value)
-        local function callback_func()
-          local bs = clock.get_beat_sec()
-          local max_density = 40/params:get(i.."density_beat_divisor"..scene)
-          local current_density = params:get(i.."density"..scene)/params:get(i.."density_beat_divisor"..scene)
-          local max_size = util.explin(1,max_density,1,0.1,current_density)
-          engine.size(i,util.clamp(
-            (value/10)*clock.get_beat_sec(),    -- original size
-            bs*0.001,                           --min size
-            bs*max_size)                        --max size from 0.1 to 1 based on density
-          )
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)
+        local bs = clock.get_beat_sec()
+        local max_density = 40/params:get(i.."density_beat_divisor"..scene)
+        local current_density = params:get(i.."density"..scene)/params:get(i.."density_beat_divisor"..scene)
+        local max_size = util.explin(1,max_density,1,0.1,current_density)
+        engine.size(i,util.clamp(
+          (value/10)*clock.get_beat_sec(),    -- original size
+          bs*0.001,                           --min size
+          bs*max_size)                        --max size from 0.1 to 1 based on density
+        )
       end)
       
       params:add_control(i.."size_lag"..scene,"size lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
@@ -455,29 +437,16 @@ function e:setup_params()
 
       params:add_control(i.."density"..scene,"density",controlspec.new(1,40,"lin",0.1,4,"/beat",1/400))
       params:set_action(i.."density"..scene,function(value) 
-        local function callback_func()
-          engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
+        engine.density(i,value/(params:get(i.."density_beat_divisor"..scene)*clock.get_beat_sec())) 
         local p=params:lookup_param(i.."size"..scene)
         p:bang()
       end)
 
       params:add_control(i.."density_lag"..scene,"density lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
-      params:set_action(i.."density_lag"..scene,function(value) 
-        local function callback_func()
-          engine.density_lag(i,value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."density_lag"..scene,function(value) engine.density_lag(i,value) end)
 
       params:add_control(i.."density_lag_curve"..scene,"density lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
-      params:set_action(i.."density_lag_curve"..scene,function(value) 
-        local function callback_func()
-          engine.density_lag_curve(i,value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."density_lag_curve"..scene,function(value) engine.density_lag_curve(i,value) end)
 
 
       params:add_control(i.."density_beat_divisor"..scene,"density beat div",controlspec.new(1,16,'lin',1,1,"",1/16))
@@ -506,102 +475,49 @@ function e:setup_params()
       params:set_action(i.."pitch_lag_curve"..scene,function(value) engine.pitch_lag_curve(i,value) end)
 
       params:add_taper(i.."spread_sig"..scene,"spread sig",0,1,0)
-      params:set_action(i.."spread_sig"..scene,function(value) 
-        local function callback_func()
-          engine.spread_sig(i,-value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."spread_sig"..scene,function(value) engine.spread_sig(i,-value) end)
       
       params:add_taper(i.."spread_sig_offset1"..scene,"spread sig offset 1",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset1"..scene,function(value) 
-        local function callback_func()
-          engine.spread_sig_offset1(i,-value/1000) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."spread_sig_offset1"..scene,function(value) engine.spread_sig_offset1(i,-value/1000) end)
       
       params:add_taper(i.."spread_sig_offset2"..scene,"spread sig offset 2",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset2"..scene,function(value) 
-        local function callback_func()
-          engine.spread_sig_offset2(i,-value/1000) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."spread_sig_offset2"..scene,function(value) engine.spread_sig_offset2(i,-value/1000) end)
       
       params:add_taper(i.."spread_sig_offset3"..scene,"spread sig offset 3",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset3"..scene,function(value) 
-        local function callback_func()
-          engine.spread_sig_offset3(i,-value/1000) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."spread_sig_offset3"..scene,function(value) engine.spread_sig_offset3(i,-value/1000) end)
       
       params:add_taper(i.."jitter"..scene,"jitter",0,500,0,5,"ms")
-      params:set_action(i.."jitter"..scene,function(value) 
-        local function callback_func()
-          engine.jitter(i,value/1000) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."jitter"..scene,function(value) engine.jitter(i,value/1000) end)
 
 
       params:add_taper(i.."fade"..scene,"compress",150,9000,1000,1)
-      params:set_action(i.."fade"..scene,function(value) 
-        local function callback_func()
-          engine.envscale(i,value/1000) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."fade"..scene,function(value) engine.envscale(i,value/1000) end)
       
-      -- params:add_control(i.."attack_level"..scene,"attack level",controlspec.new(0,1,"lin",0.01,1,"",0.01/1))
-      -- params:set_action(i.."attack_level"..scene,function(value) 
-      --   update_grain_envelope(i,scene)
-      -- end)
-
       params:add_control(i.."attack_time"..scene,"attack time",controlspec.new(0.01,0.99,"lin",0.01,0.5,"",0.001/1))
       params:set_action(i.."attack_time"..scene,function(value) 
         if params:get(i.."decay_time"..scene) ~= 1-value then
           params:set(i.."decay_time"..scene,1-value) 
         end
-        -- if params:get(i.."env_shape_attack"..scene)==1 and value > 0.9 then 
-        --   params:set(i.."attack_time"..scene,0.9) 
-        -- end
-        
-        local function callback_func()
-          update_grain_envelope(i,scene)
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
+        update_grain_envelope(i,scene)
       end)
       -- params:set("1attack_time1",0.4)
       params:add_control(i.."decay_time"..scene,"decay time",controlspec.new(0.01,0.99,"lin",0.01,0.5,"",0.001/1))
       params:set_action(i.."decay_time"..scene,function(value) 
         if params:get(i.."attack_time"..scene) ~= 1-value then
           params:set(i.."attack_time"..scene,1-value) 
-        end
-        
-        local function callback_func()
-          update_grain_envelope(i,scene)
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
+        end        
+        update_grain_envelope(i,scene)
       end)
       
-      params:add_option(i.."env_shape"..scene,"env shape",{"exp","squared","lin","sin","wel","cubed"},4)
+      params:add_option(i.."env_shape"..scene,"env shape",{"exp","squared","lin","sin","cubed","wel","wel"},4)
       params:set_action(i.."env_shape"..scene,function(value) 
-        
-        local function callback_func()
-          update_grain_envelope(i,scene)
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
+        update_grain_envelope(i,scene) 
+        local atime = params:lookup_param(i..'attack_time'..scene)
+        atime:bang()
       end)
   
       params:add_control(i.."cutoff"..scene,"filter cutoff",controlspec.new(20,20000,"exp",0,20000,"hz"))
-      params:set_action(i.."cutoff"..scene,function(value) 
-        local function callback_func()
-          engine.cutoff(i,value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:set_action(i.."cutoff"..scene,function(value) engine.cutoff(i,value) end)
       
       params:add_control(i.."cutoff_lag"..scene,"cutoff lag",controlspec.new(0.1,10,"lin",0.1,0.1,"",1/100))
       params:set_action(i.."cutoff_lag"..scene,function(value) engine.cutoff_lag(i,value) end)
@@ -609,13 +525,8 @@ function e:setup_params()
       params:add_control(i.."cutoff_lag_curve"..scene,"cutoff lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
       params:set_action(i.."cutoff_lag_curve"..scene,function(value) engine.cutoff_lag_curve(i,value) end)
 
-      params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.01,1.0,"exp",0.01,0.2,"",0.01/1))
-      params:set_action(i.."q"..scene,function(value) 
-        local function callback_func()
-          engine.q(i,value) 
-        end
-        clock.run(e.enc_debouncer,callback_func,0.1)        
-      end)
+      params:add_control(i.."q"..scene,"filter rq",controlspec.new(0.2,1.0,"exp",0.01,0.2,"",0.01/1))
+      params:set_action(i.."q"..scene,function(value) engine.q(i,value) end)
 
       params:add_control(i.."pan"..scene,"pan",controlspec.new(-1,1,"lin",0.01,0,"",0.01/1))
       params:set_action(i.."pan"..scene,function(value) engine.pan(i,value) end)
@@ -641,10 +552,10 @@ function e:setup_params()
       params:add_control(i.."overtones"..scene,"overtones vol",controlspec.new(0.00,1,"lin",0.01,0))
       params:set_action(i.."overtones"..scene,function(value) engine.overtones(i,value) end)
 
-      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1,8,"lin",1))
+      params:add_control(i.."overtone1"..scene,"overtone 1 pitch",controlspec.new(1,8,"lin",1,2))
       params:set_action(i.."overtone1"..scene,function(value) engine.overtone1(i,value) end)
 
-      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1,8,"lin",1))
+      params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1,8,"lin",1,3))
       params:set_action(i.."overtone2"..scene,function(value) engine.overtone2(i,value) end)
       
       -- params:add_text(i.."pattern"..scene,"pattern","")
@@ -659,7 +570,17 @@ function e:setup_params()
 
   params:add_group("echo",(8*e.num_scenes)+3)
   params:add_option("effects_on","echo on",{"off","on"},1)
-  params:set_action("effects_on",function(value) engine.effects_on(value) end)
+  params:set_action("effects_on",function(value) 
+    engine.effects_on(value) 
+    clock.run(function() 
+      clock.sleep(0.05)
+      for _,param_name in ipairs(e.param_list_echo) do
+        local scene = params:get('echoscene')
+        local p=params:lookup_param(param_name..scene)
+        p:bang()    
+      end  
+    end)
+  end)
   params:add_control("global_send","global effect send",controlspec.new(0.0,1.0,"lin",0.01,1))
   params:set_action("global_send",function(value) 
     for voice=1,e.num_voices do
@@ -760,8 +681,6 @@ function e:setup_params()
     end
   end)
   
-  params:add_option("e.speed_magnets","speed magnets",{"off","on"},2)
-  
   -- hide scenes 2-4 initially
   for i=1,e.num_voices do
     -- print("e.param_list",e.param_list)
@@ -780,20 +699,8 @@ function e:setup_params()
   end
 
   self:bang(1,1)
-  -- clock.run(e.init_active_echo)
   e.inited=true
 end
-
--- function e.init_active_echo()
---   clock.sleep(0.5)
---   local scene=params:get("echoscene")
---   for _,param_name in ipairs(e.param_list_echo) do
---     local p=params:lookup_param(param_name..scene)
---     if p.t~=6 then 
---       p:bang() 
---     end
---   end
--- end
 
 function e:cleanup()
   print("eglut cleanup")
@@ -801,5 +708,3 @@ end
 
 
 return e
-
-

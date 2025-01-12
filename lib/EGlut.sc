@@ -29,7 +29,7 @@ EGlut {
 
   var osc_funcs;
   var recorders;
-  var max_buffer_length=80;
+  var max_buffer_length = 30;
   var default_sample_length=10;
   var max_size=5;
     
@@ -192,7 +192,6 @@ EGlut {
 
       var recording_offset = buf_pos_start*max_buffer_length*SampleRate.ir;
       
-      // ((voice < 1) * in).poll;
       buf_dur = BufDur.ir(buf);
       buf_pos = Phasor.kr(trig: rec_buf_reset,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
@@ -223,7 +222,7 @@ EGlut {
       size=0.1, size_jitter=0, 
       pitch=1, spread_pan=0, gain=1, dry_wet=1, envscale=1,
       t_reset_pos=0, cutoff=20000, q=0.2, send=0, 
-      ptr_delay=0,sync_to_rec_head=0,
+      rec_play_sync=0,sync_to_rec_head=0,
       subharmonics=0,
       overtones=0, overtone1=2, overtone2=4,
       gr_envbuf = -1,
@@ -258,7 +257,6 @@ EGlut {
       var main_vol=1.0/(1.0+subharmonics+overtones);
       var subharmonic_vol=subharmonics/(1.0+subharmonics+overtones);
       var overtone_vol=overtones/(1.0+subharmonics+overtones);
-      var ptr;
       var reset_pos=1;
       var sig,sig2;
       var buf_pos, buf_pos2, out_of_window=0;
@@ -266,7 +264,12 @@ EGlut {
       var switch=0,switch1,switch2,switch3,switch4;
       var reset_sig_ix=0,crossfade;
       var win_size, win_frames;
+
+      // IMPORTANT: win_trigger_size is used to determin if the playhead is leaving the play window,
+      // which requires crosfading to prevent pops
+      // NOTE: pops still occur so the code needs more work
       var win_trigger_size=1024;
+
       var rec_phase_frame,rec_phase_win_start,rec_phase_win_end;
       
       // reset_grain_trig triggers whenever the grain_trig phasor completes its cycle
@@ -304,7 +307,7 @@ EGlut {
       pitch = VarLag.kr(pitch,pitch_lag,pitch_lag_curve);
 
       speed = VarLag.kr(speed,speed_lag,speed_lag_curve);
-      voice_pan = VarLag.kr(pan_lag,pan_lag_curve);
+      voice_pan = VarLag.kr(voice_pan,pan_lag,pan_lag_curve);
 
       buf_dur = BufDur.ir(buf);
 
@@ -356,10 +359,8 @@ EGlut {
         start:buf_pos_start, end:buf_pos_end, resetPos: (t_reset_pos * reset_pos) + (sync_to_rec_head * reset_pos));
 
       sig_pos = buf_pos;
-
-      sig_pos = (sig_pos - (((ptr_delay+0.2) * SampleRate.ir)/ BufFrames.ir(buf))).wrap(buf_pos_start,buf_pos_end);
-      // sig_pos = (sig_pos - ((0.2 * SampleRate.ir)/ BufFrames.ir(buf)));
-
+      sig_pos = (sig_pos - (((rec_play_sync+0.2) * SampleRate.ir)/ BufFrames.ir(buf))).wrap(buf_pos_start,buf_pos_end);
+      
       // add jitter and spread to each signal position
       spread_sig = (spread_sig*(buf_pos_end-buf_pos_start))/4;
       sig_pos1 = (sig_pos+jitter_sig).wrap(buf_pos_start,buf_pos_end);
@@ -543,7 +544,7 @@ EGlut {
             pos: sig_pos2, 
             interp: 2, 
             pan: pan_sig,
-            rate:pitch/2,
+            rate:pitch/3,
             envbufnum:gr_envbuf,
             maxGrains:16,//72,
             mul:subharmonic_vol,
@@ -732,7 +733,7 @@ EGlut {
             pos: sig2_pos2, 
             interp: 2, 
             pan: pan_sig,
-            rate:pitch/2,
+            rate:pitch/3,
             envbufnum:gr_envbuf,
             maxGrains:16,//72,
             mul:subharmonic_vol,
@@ -823,13 +824,15 @@ EGlut {
       rec_phase_win_end = rec_phase_win_end/max_buffer_length/BufSampleRate.ir(buf);
 
       //check if the recorder position is passing over the active signal positions
-      // rec_phase_trig = ((rec_phase_win_start < active_sig_pos1) * (rec_phase_win_end > active_sig_pos1) > 0);
-      // rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos2) * (rec_phase_win_end > active_sig_pos2)) > 0);
-      // rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos3) * (rec_phase_win_end > active_sig_pos3)) > 0);
-      // rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos4) * (rec_phase_win_end > active_sig_pos4)) > 0);
+      rec_phase_trig = ((rec_phase_win_start < active_sig_pos1) * (rec_phase_win_end > active_sig_pos1) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos2) * (rec_phase_win_end > active_sig_pos2)) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos3) * (rec_phase_win_end > active_sig_pos3)) > 0);
+      rec_phase_trig = (rec_phase_trig + ((rec_phase_win_start < active_sig_pos4) * (rec_phase_win_end > active_sig_pos4)) > 0);
       
+      switch = (switch + rec_phase_trig) > 0;
+
       //combine the position checks for out of window + the record head passing over the playheads
-      // SendReply.kr(switch, "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
+      SendReply.kr(switch, "/recorder_over_sigpos", [voice,rec_phase,1,active_sig_pos1]);
   		
       // crossfade bewteen the two sounds over 50 milliseconds
       sig=SelectX.ar(Lag.kr(switch,0.05),[sig,sig2]);
@@ -859,7 +862,6 @@ EGlut {
       
       sig = BLowPass4.ar(sig, cutoff, q);
       sig = Compander.ar(sig,sig,0.25)/envscale;
-
       sig = Balance2.ar(sig[0],sig[1],voice_pan);
       
       env = EnvGen.kr(Env.asr(1, 1, 1), gate: gate, timeScale: envscale);
@@ -871,15 +873,15 @@ EGlut {
       LocalOut.kr([grain_trig,out_of_window]);
     
       //audio outs
-      Out.ar(grainVoiceOutL, sig[0] * level); // ignore gain for grainVoiceOut
-      Out.ar(grainVoiceOutR, sig[1] * level); // ignore gain for grainVoiceOut
+      Out.ar(grainVoiceOutL, sig[0] * level * 4); // ignore gain for grainVoiceOut
+      Out.ar(grainVoiceOutR, sig[1] * level * 4); // ignore gain for grainVoiceOut
       Out.ar(effectSendBus, sig * level * 2 * send); // ignore gain for effect
       Out.ar(out, sig * level * gain); 
       
     }).add;
 
     SynthDef(\effect, {
-      arg in, out, returnL, returnR, effectVol=1.0, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1;
+      arg in, out, returnL, returnR, effectVol=0, echoTime=2.0, damp=0.1, size=4.0, diff=0.7, feedback=0.2, modDepth=0.1, modFreq=0.1;
       var sig = In.ar(in, 2), gsig;      
       gsig = Greyhole.ar(sig, echoTime, damp, size, diff, feedback, modDepth, modFreq);
       Out.ar(returnL, gsig);
@@ -1002,7 +1004,7 @@ EGlut {
         });
         if (source == "effect", { sourceBusses[0] = effectReturnBusL.index; sourceBusses[1] = effectReturnBusR.index });
         
-        (["set live source mode external: mode 1"]).postln;
+        (["set live source mode internal: mode 1",source]).postln;
         // (["update live source", voice, source, sourceBusses,grainVoiceOutBusses]).postln;
         recorders[voice].set(\mode, 1);
         recorders[voice].set(\internal_in, sourceBusses[0]);
@@ -1044,16 +1046,15 @@ EGlut {
       gvoices[voice].set(\gate, msg[2]);      
     });
 
-    thisEngine.addCommand("ptr_delay", "if", { arg msg;
+    thisEngine.addCommand("rec_play_sync", "if", { arg msg;
       var voice = msg[1] - 1;
-      var rec_phase, pos;
+      var rec_phase;
         rec_phase=rec_phases[voice].getSynchronous;
-        // pos=rec_phase.linlin()
-        gvoices[voice].set(\speed,1,\pos, rec_phase,\ptr_delay, msg[2], \sync_to_rec_head, 1);
+        gvoices[voice].set(\speed,1,\pos, rec_phase/2,\rec_play_sync, msg[2], \sync_to_rec_head, 1);
         recorders[voice].set(\t_reset_pos, 1);
         recorders[voice+ngvoices].set(\t_reset_pos, 1);
 
-        // ["set ptr_delay",rec_phase].postln;
+        ["set rec_play_sync",rec_phase/2].postln;
         Routine({
           0.1.wait;
           gvoices[voice].set(\sync_to_rec_head, 0);
@@ -1255,13 +1256,9 @@ EGlut {
       var decay_time = msg[4];
       var shape = msg[5]-1;
       var size = msg[6];
-      // var attack_shape = msg[5]-1;
-      // var decay_shape = msg[6]-1;
-      // var size = msg[7];
+
       var oldbuf;
-      var curve_types=["exp","squared","lin","sin","wel","cubed"];
-      // var attack_curve_types=["exp","squared","lin","sin","wel","cubed"];
-      // var decay_curve_types=["exp","squared","lin","sin","wel","cubed"];
+      var curve_types=["exp","squared","lin","sin","cubed","wel","wel"];
       var winenv = Env(
         [0.001, attack_level, 0.001], 
         [attack_time*size, decay_time*size], 
@@ -1500,8 +1497,7 @@ EGlut {
       var recorder_pos = msg[4];
       var sig_pos_ix = msg[5];
       var sig_pos = msg[6];
-      // (["recorder_over_sigpos",voice,recorder_pos,sig_pos_ix,sig_pos]).postln;
-      if (voice < 1,{ (["recorder_over_sigpos",voice,recorder_pos,sig_pos_ix,sig_pos]).postln; });
+      // if (voice < 1,{ (["recorder_over_sigpos",voice,recorder_pos,sig_pos_ix,sig_pos]).postln; });
     }, "/recorder_over_sigpos");
 
     OSCdef(\queue_waveform_generation, {|msg| 

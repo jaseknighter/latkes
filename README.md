@@ -1,102 +1,66 @@
-# futurespast
+# latkes
 live and recorded quantized granulation
 
-futurespast represents a modest set of enhancements to @infinitedigits granchild script. grid controls and lfos have been removed but just about everything else remains:
+latkes expands upon @infinitedigits granchild script. 
 
 * four voices
 * greyhole echo effect
 * quantized size and density
 * position jitter
 
-key new features:
-* waveform and playhead position visualizer 
-* process live and recorded audio
-* four scenes per voice
-* eight configurable parameter gesture recorders per voice
-* attack decay grain envelopes with six curve types: step,linear,sine ,welches?,squared, cubed
-* four individually spreadable play heads per voice
-* per voice effect send (to the greyhole echo effect)
-* position and density jitter
-* per voice low pass filter
-* 16n support build-in 
+key features:
+* four voices/four scenes per voice
+* four playheads per voice
+* four 30s buffers per voice
+* eight gesture recorders per voice/scene
+* processes live and recorded audio
+* attack decay grain envelopes
 
 * IMPORTANT NOTE ABOUT ECHO (GREYHOLE)....and memory 
+the effect uses quite a bit of processing power (e.g.average CPU use will go up by ~10% or more) and may not work well in all situations. using the effect with the size param set high in particular may cause issues.
+
+you can prevent the echo from taking up CPU cycles by turning the `echo on` param to `off`.
 
 # requirements
 * norns
+* 128 grid (optional)
 * midi-controller (optional)
 
 # documentation
-* E1: switch between screens
+* E1: switch between waveform and gesture recorder screens
 * E2: select control
-* E3: change control
+* E3: change control value
 * K1+E3: record a param (2nd screen only)
 
-the script has two screens: waveform view and a gesture recorder view
+see the doc on github for detailed instructions.
 
-## waveform view
-five parameters can be controlled from this view:
+## quickstart
 
-* mode: off (o), live (lv), recorded (rc)
-* voice: select which voice (1-4) to view
-* scene: select which scene (a-d) to view
-* sample start: change the granulation player's starting loop point within the live or recorded buffer 
-* sample length: change the length of the granulation player's loop within the live or recorded buffer
+### process sounds
+* live sounds: since the first voice is set to play live sounds upon script load by default, send live audio to norns to hear the script process audio 
+* recorded audio: in one of the `voice[x]` PARAMETERS submenus, select a file using the `sample` file selector, set `mode` to `recorded`, and set `play` to `on`.
 
-while most voice parameters can be set per voice and per scene, a few are only configurable per voice: 
+### setup gesture recorders
 
-* sample start: start point of the buffer area to sample
-* sample length: length of the buffer area to sample
-* sample mode
-* sample: path to file 
-* live rec level: amount of live audio to sample/retain
-* live pre level: amount of pre-recorded live audio to sample/retain
-* mix live+rec: include live buffer when sampling recorded audio
-
-## gesture recorder view
-
-### params with lag
-density
-size
-spread pan
-cutoff
-send
-pitch
-speed
-pan
-
-### setup
-each scene of each voice has can have its own gesture recorder settings. before using the gesture recorder, params need to be configured in the PARAMs menu. 
-
-to setup the gesture recorders for a voice/scene:
-
-* open a recorder configuration sub-menu (e.g. `voice1-rec config`)
+in the PARAMETERS menu:
+* open a recorder configuration sub-menu (e.g. `voice1-refl config`)
 * select the scene to configure (a-d)
 * set up to eight parameters to the "on" position
 
-then, the selected parameters can be controlled from the 2nd screen of the script's ui or from the PARAMS menu.
-
 after setting up params, to record a gesture:
 
-* go to the gesture recorder screen
-* select one of the eight param's 
+* with E1, go to the gesture recorder screen (use E1 to switch screeens)
+* with E2, select one of the params that have been configured
 * with K1+E3, record a gesture
   * recording starts when E3 is turned for the first time
   * recording stops when K1 is released
 
 after a gesture has been recorded, loop (L) and play (P) controls appear in the ui below the record (R) control. 
 
-## global reflector controls
-
-* k2: stop all reflectors playing
-* k3: start all reflectors playing
-* k1+k2: stop all reflector looping
-* k1+k3: start all reflector looping
-
 # install
 from maiden:
 
-;install https://github.com/jaseknighter/futurespast
+;install https://github.com/jaseknighter/latkes
 
 after installing, restart norns and reload the script again. 
 

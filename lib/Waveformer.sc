@@ -12,7 +12,7 @@ Waveformer {
 	var <waveformRoutine;
 	var generatingWaveform = "-1"; // -1 not running
 	var abandonCurrentWaveform = false;
-
+  var waveform_scalar = 1.25;
 
 	*new {
     arg buf_arrays;
@@ -147,8 +147,8 @@ Waveformer {
                 for(0, numChannels.min(2) - 1, {
                   arg c;
                   var sample = rawData[frame.round.asInteger * numChannels + c];
-                  min = sample.min(min);
-                  max = sample.max(max);
+                  min = sample.min(min)*waveform_scalar;
+                  max = sample.max(max)*waveform_scalar;
                 });
 
                 frame = frame + stride;
