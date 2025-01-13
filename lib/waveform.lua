@@ -1,5 +1,4 @@
 -- from @infinitedigits graintopia
-
 local Waveform={}
 
 function Waveform:new(args)
@@ -40,7 +39,7 @@ function Waveform:display_sigs_pos(sigs_pos, playing, sig_size)
   --show signal position(s)
   if #sigs_pos > 0 then
     sig_size = sig_size+1 or 2
-    screen.level(playing == 1 and 5 or 12)
+    screen.level(playing == 1 and 5 or 15)
     local center = self.composition_bottom-((self.composition_bottom-self.composition_top)/2)
     for i=1,#sigs_pos do
       local sig_pos = sigs_pos[i]
@@ -75,9 +74,9 @@ function Waveform:display_waveform()
   local active_pre_level = params:get(active_voice.."live_pre_level")
   
   if sample_mode == 1 then 
-    screen_level = 10 
+    screen_level = 5
   else
-    screen_level = util.round((active_rec_level + active_pre_level) * 7)
+    screen_level = util.round((active_rec_level + active_pre_level) * 5)
   end
   
   screen.level(screen_level)
@@ -86,8 +85,6 @@ function Waveform:display_waveform()
     local height = util.round(math.abs(s[2]) * ((self.composition_top-self.composition_bottom)))
     screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos), center - (height/2))
     screen.line_rel(0, height)
-    -- screen.move(util.linlin(0,127,self.composition_left,self.composition_right,x_pos+1), center - (height/2))
-    -- screen.line_rel(0, height)
     x_pos = x_pos + 1
   end
   screen.stroke()

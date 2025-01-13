@@ -1,23 +1,16 @@
 # latkes
 live and recorded quantized granulation
 
-latkes expands upon @infinitedigits granchild script. 
+latkes expands upon @infinitedigits granchild script and includes these key features:
 
-* four voices
-* greyhole echo effect
-* quantized size and density
-* position jitter
-
-key features:
 * four voices/four scenes per voice
 * four playheads per voice
 * four 30s buffers per voice
 * eight gesture recorders per voice/scene
-* processes live and recorded audio
 * attack decay grain envelopes
 
 * IMPORTANT NOTE ABOUT ECHO (GREYHOLE)....and memory 
-the effect uses quite a bit of processing power (e.g.average CPU use will go up by ~10% or more) and may not work well in all situations. using the effect with the size param set high in particular may cause issues.
+the greyhole effect uses quite a bit of processing power (e.g.average CPU use will go up by ~10% or more) and may not work well in all situations. using the effect with the size param set high in particular may cause issues.
 
 you can prevent the echo from taking up CPU cycles by turning the `echo on` param to `off`.
 
@@ -29,27 +22,38 @@ you can prevent the echo from taking up CPU cycles by turning the `echo on` para
 # documentation
 * E1: switch between waveform and gesture recorder screens
 * E2: select control
-* E3: change control value
-* K1+E3: record a param (2nd screen only)
+* K2/K3 (screen 1) or E3 (screen 2): change control value
+* K1+E3: record param (2nd screen only)
 
-see the doc on github for detailed instructions.
+[laktes user guide](doc/latkes_user_guide_v_0.1.0.pdf)
 
 ## quickstart
 
-### process sounds
-* live sounds: since the first voice is set to play live sounds upon script load by default, send live audio to norns to hear the script process audio 
-* recorded audio: in one of the `voice[x]` PARAMETERS submenus, select a file using the `sample` file selector, set `mode` to `recorded`, and set `play` to `on`.
+### process live sounds
+the first voice is set to play live sounds upon script load by default.
 
-### setup gesture recorders
+### process live sounds
+select a file using the `sample` file selector in one of the `voice[x]` PARAMETERS submenus, set `mode` to `recorded`, and set `play` to `on`.
 
-in the PARAMETERS menu:
+### screen 1 controls (waveform)
+params controllable from the waveform screen:
+* modes: live (*lv*) and recorded (*rec*)
+* voice (*1-4*)
+* scene (*a-d*)
+* sample start and sample length (graphical controls at the bottom of the screen)
+* play (P)
+* live audio flip rec and pre settings (F)
+
+### screen 2 controls gesture recorders (aka *reflectors*)
+
+reflectors need to be setup in the PARAMETERS menu before gesture recorders will appear on the 2nd screen:
 * open a recorder configuration sub-menu (e.g. `voice1-refl config`)
-* select the scene to configure (a-d)
+* select the scene to configure (`a`-`d`)
 * set up to eight parameters to the "on" position
 
 after setting up params, to record a gesture:
 
-* with E1, go to the gesture recorder screen (use E1 to switch screeens)
+* with E1, go to the gesture recorder screen
 * with E2, select one of the params that have been configured
 * with K1+E3, record a gesture
   * recording starts when E3 is turned for the first time
@@ -63,4 +67,3 @@ from maiden:
 ;install https://github.com/jaseknighter/latkes
 
 after installing, restart norns and reload the script again. 
-

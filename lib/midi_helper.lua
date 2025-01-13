@@ -34,9 +34,6 @@ end
 -- current usb cc values: midi_event_index table 20[1] - 27[3]
 -- current usb channel/cc/value  midi_event_index table 29[1] - 43[3] QUESTION: why don't all 16 channels show up?
 --------------------------------
-  
-local cc_vals_16n = {}
-local channel_vals_16n = {}
 
 local function send_16n_sysex(m,d) 
   m.send(device_16n,{0xf0})
@@ -102,14 +99,10 @@ local midi_event = function(data)
   if msg.type == "stop" or msg.type == "start" then
     print("stopping/starting:", msg.type)
   end
+
   if data[1] == 240 and data[2] == 125 then        --- this is the start byte with a a message from the 16n faderbank 
     midi_event_index = 2
     print("received start byte from the 16n faderbank")
-    message_from_16n = true
-    -- handle other message types here
-    -- local note_to_play = data[2]
-    -- if note_to_play then 
-    -- end
   end
 end
 

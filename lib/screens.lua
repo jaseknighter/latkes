@@ -4,7 +4,7 @@ local reflector_button_letters_s2={"R","L","P"}
 local reflector_button_labels_s2={"rec","loop","play"}
 local alt_key = false
 local screen_recording = false
--- function 
+
 function screens:init(args)
   local args=args==nil and {} or args
   for k,v in pairs(args) do
@@ -157,8 +157,6 @@ function screens:stop_start_reflectors(action,voice,scene)
       end
     end
   end
-
-
 end
 
 function screens:key(k,z)
@@ -166,7 +164,6 @@ function screens:key(k,z)
   if k==1 then
     if z==1 then
       alt_key=true
-      -- print("true")
     else
       alt_key=false
       if screen_recording == true then
@@ -176,7 +173,6 @@ function screens:key(k,z)
         local reflector = self.p2ui.selected_reflector
         local reflector_record_id=voice.."-"..reflector.."record"..scene
         params:set(reflector_record_id, 1)  
-
       end
     end
   elseif k==2 then
@@ -258,18 +254,15 @@ function screens:enc(n,d)
       end
     end
   elseif active_screen==2 then
-    -- print(alt_key,n)
     if alt_key == true then
       if n==3 then
         local voice, scene, reflector = self:get_selected_ui_elements()
-
         local reflector_active = string.find(self:get_active_ui_area_type(),"reflector")
         if reflector_active then
           if screen_recording == false then screen_recording = true end
           local reflector_record_id=voice.."-"..reflector.."record"..scene
           if params:get(reflector_record_id) == 1  then
             self:set_selected_ui_area(reflector*4,2)
-            -- screens:set_active_reflector()    
             params:set(reflector_record_id, 2)  
           end
           local reflector_param = reflectors_selected_params[voice][scene][reflector]
@@ -285,7 +278,7 @@ function screens:enc(n,d)
     elseif n==2 then
       local ix=util.clamp(self.p2ui.selected_ui_area_ix+d,1,self.p2ui.num_ui_areas)
 
-      --start hacky code to skip over reflector buttons when they are invisible
+      --wacky code to skip over reflector buttons when they are invisible
       local ui_area_type = self:get_active_ui_area_type()
       if d > 0 and ui_area_type == "reflectorbutton" then
         local voice, scene, reflector = self:get_selected_ui_elements()
@@ -295,7 +288,6 @@ function screens:enc(n,d)
       
       self:set_selected_ui_area(ix)
       ui_area_type = self:get_active_ui_area_type()
-      -- print("ui_area_type,self:get_selected_ui_elements()",ui_area_type,self:get_selected_ui_elements())
       if ui_area_type == "reflectorbutton" then
         local reflector_button = self:get_active_reflector_button()
         self.p2ui.selected_reflector_button = reflector_button
@@ -364,12 +356,8 @@ function screens:enc(n,d)
         local scene = self.p2ui.selected_scene
         local reflector = self.p2ui.selected_reflector
         local reflector_record_id=voice.."-"..reflector.."record"..scene
-        -- print("visible",reflector_record_id,params:visible(reflector_record_id))
-        -- if params:visible(reflector_record_id) == true then
-          local reflector_id=reflectors_selected_params[voice][scene][reflector].id
-          params:delta(reflector_id,d)
-        -- end
-
+        local reflector_id=reflectors_selected_params[voice][scene][reflector].id
+        params:delta(reflector_id,d)
       end
     end
   end
@@ -416,8 +404,6 @@ function screens:draw_left_butons(ui_area, voice, scene)
       screen.level(0)
       screen.text_center(eglut.scene_labels[scene])    
     end
-    -- screen.move(self.composition_right+button_size+4,button_top+6)
-    -- screen.level(0)
     screen.stroke()
   end
 end
@@ -456,14 +442,7 @@ function screens:draw_right_buttons(screen_num,ui_area,voice,scene,mode_ix)
       elseif button == 3 then
         -- place for a 3rd button
       end
-      screen.stroke()
-        
-      -- screen.move(self.composition_right+button_size+4,button_top+6)
-      -- screen.level(0)
-      -- screen.stroke()
-      -- screen.move(button_left-11,button_top+8)
-      -- screen.text(button_letters[button])
-      -- screen.stroke()
+      screen.stroke()        
     end
   elseif screen_num == 2 then
     -- set reflector buttons
@@ -699,6 +678,7 @@ function screens:redraw(screen_num, playing)
   self:display_frame()
   local ui_area = self:get_active_ui_area()
   local voice, scene = self:get_selected_ui_elements()
+  
   -- draw sample mode, voice, and scene ui boxes
   self:draw_left_butons(ui_area, voice, scene)
 

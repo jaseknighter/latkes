@@ -20,20 +20,16 @@ Engine_Latkes : CroneEngine {
   alloc {
     s=context.server;
 
-    // ["memsize",s.options.memSize].postln;
     s.options.memSize_(65536 * 4);
-    // s.options.memSize=2**15; //65536
-    // s.options.memSize=1024*256; 
-    // s.options.memSize=1024*128; 
-    ["increasing memsize and numbuffers",s.options.memSize,s.options.numBuffers].postln;
+    ["increasing memsize",s.options.memSize].postln;
     eglut=EGlut.new(s,context,this);
 
     "eglut inited".postln;
   }
 
   free {
-    "free Latkes".postln;  
-    ">>>>>>>>>>>>>>".postln;
+    "free latkes!!!!".postln;  
+    // "with sourcream and apple sauce!!!!".postln;  
     s.queryAllNodes;
 
     eglut.free;

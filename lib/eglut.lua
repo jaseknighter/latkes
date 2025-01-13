@@ -22,7 +22,6 @@ e.param_list={
   "live_rec_level",
   "live_pre_level",
   "live_source",
-  -- "mix_live_rec",
   "scene_params",
   "play",
   "volume","send","send_lag","send_lag_curve","rec_play_sync","speed","speed_lag","speed_lag_curve","seek","size","size_lag","size_lag_curve",
@@ -102,7 +101,6 @@ function deep_copy(orig, copies)
   else -- number, string, boolean, etc
       copy = orig
   end
-  print("DC DONE")
   return copy
 end
 
@@ -121,7 +119,6 @@ function e:on_sample_selected(voice,scene,file)
 end
 
 function e:bang(voice, scene, bangscope)
-  print("e bang")
   bangscope = bangscope or 1
   if bangscope == 1 then
     local start_voice=1
@@ -157,16 +154,12 @@ function e:bang(voice, scene, bangscope)
 end
 
 function e:get_gr_env_values(voice, scene)
-  -- local attack_level = params:get(voice.."attack_level"..scene)
   local attack_level = 1
   local attack_time = params:get(voice.."attack_time"..scene)
   local decay_time = params:get(voice.."decay_time"..scene)
   local shape = params:get(voice.."env_shape"..scene)
-  -- local attack_shape = params:get(voice.."env_shape_attack"..scene)
-  -- local decay_shape = params:get(voice.."env_shape_decay"..scene)
   local size = params:get(voice.."size"..scene)
   return {attack_level, attack_time, decay_time, shape, size}
-  -- return {attack_level, attack_time, decay_time, attack_shape, decay_shape, size}
 end
 
 local function update_grain_envelope(i,scene)
@@ -174,10 +167,9 @@ local function update_grain_envelope(i,scene)
 end 
 
 
-
--- param stuff
+---------------------------------------------------------
+-- params
 function e:rebuild_params()
-  -- if _menu.rebuild_params~=nil then
   if self.inited then
     _menu.rebuild_params()
   end
@@ -187,10 +179,6 @@ function e:load_file(voice,scene,file)
   local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
   engine.read(voice,file,sample_start,sample_length)
-  -- local mix_live_rec = params:get(voice.."mix_live_rec")
-  -- if mix_live_rec == 1 then
-  --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
-  -- end
   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{0,voice-1})
 
   e:on_sample_selected(voice,scene,file)
@@ -200,11 +188,6 @@ function e:granulate_live(voice)
   local sample_start = params:get(voice.."sample_start")
   local sample_length = params:get(voice.."sample_length")
   osc.send( { "localhost", 57120 }, "/sc_osc/granulate_live",{voice-1, sample_start, sample_length})
-  -- local mix_live_rec = params:get(voice.."mix_live_rec")
-  -- if mix_live_rec == 1 then
-  --   local live_rec_level = params:get(voice.."live_rec_level")
-  --   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
-  -- end
   local live_rec_level = params:get(voice.."live_rec_level")
   osc.send( { "localhost", 57120 }, "/sc_eglut/live_rec_level",{live_rec_level,voice-1})
 end
@@ -291,7 +274,6 @@ function e:setup_params()
         mode_ix = 1
         if recorded_file ~= "-" then
           e:load_file(i,e.active_scenes[i],recorded_file)            
-          -- params:set(i.."play"..params:get(i.."scene"),2)
         else
           print("no file selected to granulate")
           params:set(i.."play"..params:get(i.."scene"),1)
@@ -333,8 +315,6 @@ function e:setup_params()
       params:set(i.."live_pre_level",live)
     end)
 
-    -- params:add_option(i.."mix_live_rec","mix live+rec",{"off","on"},1)
-    
     if i == 1 then
       params:add_option(i.."live_source","live source",{"external"},1)
     else
@@ -355,7 +335,6 @@ function e:setup_params()
       end
       table.insert(engine_options,"effect")
       local source = engine_options[x]
-      print(i,source)
       engine.live_source(i,source)
     end)
     
@@ -367,7 +346,6 @@ function e:setup_params()
       params:add_option(i.."play"..scene,"play",{"off","on"},i==1 and 2 or 1)
       params:set_action(i.."play"..scene,function(x) 
         engine.gate(i,x-1) 
-        print("set play",i,scene,x)
       end)
 
       params:add_control(i.."volume"..scene,"volume",controlspec.new(0,10.0,"lin",0.05,1,"",0.05/10))
@@ -399,8 +377,6 @@ function e:setup_params()
         params:set(i.."speed"..scene,1)
         engine.rec_play_sync(i,0)
       end)
-      -- params:add_control(i.."rec_play_sync"..scene,"delay",controlspec.new(0.05,2,"lin",0.001,0.2,"",0.05/2))
-      -- params:set_action(i.."rec_play_sync"..scene,function(value) engine.rec_play_sync(i,1.29) end)
       
       params:add_control(i.."speed"..scene,"speed",controlspec.new(-5.0,5.0,"lin",0.01,1,"",0.01/1))
       params:set_action(i.."speed"..scene,function(value) engine.speed(i,value) end)
@@ -557,14 +533,6 @@ function e:setup_params()
 
       params:add_control(i.."overtone2"..scene,"overtone 2 pitch",controlspec.new(1,8,"lin",1,3))
       params:set_action(i.."overtone2"..scene,function(value) engine.overtone2(i,value) end)
-      
-      -- params:add_text(i.."pattern"..scene,"pattern","")
-      -- params:hide(i.."pattern"..scene)
-      -- params:set_action(i.."pattern"..scene,function(value)
-        -- if granchild_grid~=nil then
-        --   granchild_grid:set_steps(i,value)
-        -- end
-      -- end)
     end
   end
 
@@ -674,7 +642,6 @@ function e:setup_params()
     if params:get("sync_selector") >= e.start_scene_params_at then
       local value_to_sync=params:get(voice_from..selected_param..scene_from)
       params:set(voice_to..selected_param..scene_to,value_to_sync)
-      -- print(selected_param,voice_from,scene_from,voice_to,scene_to,value_to_sync)
     else
       local value_to_sync=params:get(voice_from..selected_param)
       params:set(voice_to..selected_param,value_to_sync)
@@ -683,11 +650,8 @@ function e:setup_params()
   
   -- hide scenes 2-4 initially
   for i=1,e.num_voices do
-    -- print("e.param_list",e.param_list)
     for _,param_name in ipairs(e.param_list) do
-      -- print(param_name)
       for j=e.start_scene_params_at,e.num_scenes do
-        -- tab.print(i..param_name..j)
         params:hide(i..param_name..j)
       end
     end

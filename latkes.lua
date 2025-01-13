@@ -1,10 +1,8 @@
--- futures past
+-- latkes
 --
 -- llllllll.co/t/latkes
 --
--- norns.script.load('/home/we/dust/code/latkes/latkes.lua')
--- 
--- v0.1_241118 (beta)
+-- v0.1.0_241118 (beta)
 --
 --    ▼ instructions below ▼
 -- instructions
@@ -13,22 +11,22 @@
 -- documentation:
 -- be careful when setting different filter cutoff and rq between scenes or popping can occur when switching, esp. if rq is set low
 -- 
--- credits: eigen, fourhoarder, 24franks, infinitedigits
--- 
+-- notes about overriding paramset (og_pset_write, etc.)
 -- 
 -- bugs to fix:
 -- fix record/play head sync: pops when playhead wraps around
--- fix record/play head sync: why does the record head position need to be divided by 2 when setting the rec/playhead sync param?
+-- fix record/play head sync: the record head position needs to be divided by 2 when setting the rec/playhead (related to sending buffer position data from two instances to a single bus channel)
 -- fix reported bugs
+-- figure out why we need to flip rec_scene and active voice to get params to show...something to do with show_hide loop at the start?
 
--- features, etc:
+-- features, performance improvements:
+-- add screen/grid dirty code
 -- add jitter for grain size
--- code cleanup, including:
--- move lua osc events that belong in eglut.lua into that file 
---
+-- code cleanup
 --
 -- credits:
---    infinitedigits for code to remove clicks in looping buffers:
+-- eigen, fourhoarder, 24franks, infinitedigits, alanza, dani_derks
+-- infinitedigits for code to remove clicks in looping buffers:
 --         https://infinitedigits.co/tinker/sampler/
 --         https://github.com/schollz/workshops/tree/main/2023-03-ceti-supercollider
 
@@ -38,26 +36,26 @@ engine.name='Latkes'
 
 reflection = require 'reflection'
 
-
 eglut=include("lib/eglut")
 waveform=include("lib/waveform")
 screens=include("lib/screens")
 midi_helper=include("lib/midi_helper")
-fp_grid=include("lib/grid")
+lk_grid=include("lib/grid")
 grid_overrides=include("lib/grid_overrides")
+
+max_buffer_length = 30
 
 local inited=false
 
-composition_top = 20
+local composition_top = 20
 local composition_bottom = 64-10
-composition_left = 23--16
+local composition_left = 23--16
 local composition_right = 127-16
 
 local num_voices = 4
 local num_scenes = 4
 
 MAX_REFLECTORS_PER_SCENE=8
-
 
 active_positions = {}
 
@@ -85,9 +83,9 @@ waveform_sig_positions = {}
 composition_slice_positions = {}
 redraw_waveform = false
 
-local audio_path = _path.audio..norns.state.name.."/"
-local data_path=_path.data..norns.state.name.."/"
-local reflection_data_path=data_path.."reflectors/"
+local audio_path            =   _path.audio..norns.state.name.."/"
+local data_path             =   _path.data..norns.state.name.."/"
+local reflection_data_path  =   data_path.."reflectors/"
 
 buffer_loop_points = {}
 for i=1,num_voices do
@@ -95,8 +93,7 @@ for i=1,num_voices do
   buffer_loop_points[i].last_loop_start = 0
   buffer_loop_points[i].last_loop_end = 10
 end
-max_buffer_length = 30
-enc_debouncing = false
+
 --------------------------
 -- waveform rendering
 --------------------------
@@ -110,28 +107,21 @@ local function store_waveform(voice, sample_mode, offset, padding, waveform_blob
   local sample_length = params:get(voice .. "sample_length")
   local pct_buffer_fill = (sample_start + sample_length)/max_buffer_length
   if pct_buffer_fill > buffer_fill_amounts[waveform_name] then
-    -- print(voice,sample_mode,sample_start, sample_length, pct_buffer_fill,  buffer_fill_amounts[waveform_name])
-    -- print("buffer_fill_amounts for " .. waveform_name .. "to " .. pct_buffer_fill)
     buffer_fill_amounts[waveform_name] = pct_buffer_fill
   end
   redraw_waveform = true
-  -- Timber.waveform_changed_callback(id)
 end
 
 --------------------------
 -- osc functions
 --------------------------
-local script_osc_event = osc.event
-
 
 function on_eglut_file_loaded(voice)
   -- print("on eglut file loaded")
 end
 
 function osc.event(path,args,from)
-  if inited == false then return end
-  -- elseif script_osc_event then script_osc_event(path,args,from) end
-  
+  if inited == false then return end  
   if path == "/lua_eglut/engine_waveform" then
     --args: voice, sample_mode, offset, padding, waveform
     store_waveform(args[1]+1, args[2]+1, args[3], args[4], args[5]);
@@ -150,8 +140,6 @@ function osc.event(path,args,from)
     local voice = args[1]+1
     local duration = args[2]
     on_eglut_file_loaded(voice, duration)
-  elseif path == "/lua_osc/sc_inited" then
-    print("fcm 2d corpus sc inited message received")
   end
 end
 
@@ -233,15 +221,11 @@ function setup_params()
     midi_helper.update_midi_devices(channel,true)
   end)
 end
-  --------------------------
-  --save/load params
-  --------------------------
-
 
 
 ---------------------------------------------------
--- reflection stuff start
--- reflection code from @alanza (https://llllllll.co/t/low-pixel-piano/65705/2)
+-- reflection code
+-- from @alanza (https://llllllll.co/t/low-pixel-piano/65705/2)
 ---------------------------------------------------
 local reflector_scene_labels={'a','b','c','d'}
 eglut_params={}
@@ -249,18 +233,18 @@ reflector_process_data={}
 
 --[[
 -- key reflection functions
-
-mir:stop()
-mir:start()
-mir:set_rec() - 0 stop,1 start, 2 queue
-mir:set_loop() - 0 no loop, 1 loop
-mir:watch({event})
-mir.end_of_rec_callback=function() --do something end
-mir.step_callback=function() --do something end
-mir.start_callback=function() --do something end
-mir.stop_callback=function() --do something end
-mir.endpoint
+    reflector:stop()
+    reflector:start()
+    reflector:set_rec() - 0 stop,1 start, 2 queue
+    reflector:set_loop() - 0 no loop, 1 loop
+    reflector:watch({event})
+    reflector.end_of_rec_callback=function() --do something end
+    reflector.step_callback=function() --do something end
+    reflector.start_callback=function() --do something end
+    reflector.stop_callback=function() --do something end
+    reflector.endpoint
 ]]
+
 -- utility to clone function (from @eigen)
 function clone_function(fn)
   local dumped=string.dump(fn)
@@ -321,17 +305,16 @@ function init_reflector(p_id,voice,scene)
       value=event.value,
       reflector=reflector
     }
-    -- print("process reflector",voice,scene,p_id)
-    -- tab.print(event)
   end
+
   reflectors[voice][scene][p_id].start_callback=function() 
     -- print("reflector start callback",voice,scene,p_id)
   end
+
   reflectors[voice][scene][p_id].end_callback=function() 
     local recorder_ix=reflectors[voice][scene][p_id].recorder_ix
     local reflector_loop=params:get(voice.."-"..recorder_ix.."loop"..scene)
     local recording_completed = reflectors[voice][scene][p_id].recording
-    -- print("reflector end callback",voice,scene,p_id,recording_completed)
     local reflector_play_id =voice.."-"..recorder_ix.."play"..scene
     local reflector_play = params:get(reflector_play_id)
     if reflector_loop==1 and recording_completed == false then
@@ -354,15 +337,9 @@ function init_reflector(p_id,voice,scene)
   end
 
   reflectors[voice][scene][p_id].end_of_rec_callback=function() 
-    local recorder_ix=reflectors[voice][scene][p_id].recorder_ix
-    local rec_id=voice.."-"..recorder_ix.."record"..scene
-    local reflector_tab = get_reflector_table(voice,scene,recorder_ix)    
-    -- print("reflector end of rec callback",voice,scene,p_id,recorder_ix,rec_id,reflector_tab)
     reflectors[voice][scene][p_id].endpoint_premult = nil
     reflectors[voice][scene][p_id].event_premult = nil
     reflectors[voice][scene][p_id].recording = true
-    -- tab.print(reflector_tab)
-    -- reflector_tab:save(reflection_data_path .. rec_id)
   end
 end
 
@@ -384,8 +361,6 @@ function enrich_param_reflector_actions(p_id,voice,scene)
     })
   end
   init_reflector(p_id,voice,scene)
-
-  -- reflectors[voice][scene][p_id]
 end
 
 function unenrich_param_reflector_actions(p_id,voice,scene)
@@ -599,7 +574,7 @@ function init_reflectors()
             params:set(voice.."-"..reflector.."play"..scene,2) 
             reflector_tab:set_rec(1)
           end
-          fp_grid.set_reflector_selector(reflector)            
+          lk_grid.set_reflector_selector(reflector)            
           showhide_reflectors(scene,voice)
         end)
         local loop_id=voice.."-"..reflector.."loop"..scene
@@ -616,7 +591,7 @@ function init_reflectors()
               local reflector_play=voice.."-"..reflector.."play"..scene
               params:set(reflector_play,2)
             end
-            fp_grid.set_reflector_selector(reflector)            
+            lk_grid.set_reflector_selector(reflector)            
           end
         end)
 
@@ -631,7 +606,7 @@ function init_reflectors()
             else
               reflector_tab:start()
             end
-            fp_grid.set_reflector_selector(reflector)
+            lk_grid.set_reflector_selector(reflector)
           end
         end)
       end
@@ -723,28 +698,28 @@ function init_reflectors()
   showhide_reflector_configs(1)
 end
 
---- changes the duration of the current loop
+--- EXPERIMENTAL: changes the duration of the current loop
 --- note: also see the code in the end_of_rec_callback
 ---       to clear the premult variables when there's a new recording
-function reflection:fp_mult(mul)
-  clock.run(function() 
-    print(self.event_premult,self.endpoint_premult)
-    if self.event_premult == nil then
-      self.event_premult = deep_copy(self.event)
-      self.endpoint_premult = self.endpoint
-    end
-    local copy = deep_copy(self.event_premult)
-    print("CONTINUE")
-    clock.sleep(0.5)
-    local event_new = {}
-    for i = 1, self.endpoint do
-      event_new[math.ceil(i*mul)] = copy[i]
-      -- print(math.ceil(i*mul))
-    end
-    self.event = event_new
-    self.endpoint = math.ceil(self.endpoint_premult * mul)
-  end)
-end
+-- function reflection:lk_mult(mul)
+--   clock.run(function() 
+--     print(self.event_premult,self.endpoint_premult)
+--     if self.event_premult == nil then
+--       self.event_premult = deep_copy(self.event)
+--       self.endpoint_premult = self.endpoint
+--     end
+--     local copy = deep_copy(self.event_premult)
+--     print("CONTINUE")
+--     clock.sleep(0.5)
+--     local event_new = {}
+--     for i = 1, self.endpoint do
+--       event_new[math.ceil(i*mul)] = copy[i]
+--       -- print(math.ceil(i*mul))
+--     end
+--     self.event = event_new
+--     self.endpoint = math.ceil(self.endpoint_premult * mul)
+--   end)
+-- end
 
 ---------------------------------------------------
 -- reflector stuff end
@@ -755,14 +730,9 @@ function get_selected_voice()
 end
 
 function init()
-  print(">>>>>>>init futures past<<<<<<<<")
+  print("initialize latkes")
   
   print(">>>>>>>override PSET save/load/delete<<<<<<<<")
-
--- og=paramset.read;function paramset.read (slf,f,s) print(">>>>read",slf,f,x); tab.print(slf);og(slf,f,s)  end
-
-
-
   og_pset_write   = paramset.write
   og_pset_read    = paramset.read
   og_pset_delete  = paramset.delete
@@ -775,7 +745,6 @@ function init()
       local n = filename
       filename = norns.state.data .. norns.state.shortname
       pset_number = string.format("%02d",n)
-      -- local filename_pre = filename .. "-" .. pset_number .. ".rdat"
       local filename_pre = filename .. "-" .. pset_number
       print(">>>>>>>new paramset:write...save reflector data",filename_pre)
       local reflector_data_folder = filename_pre .. "-reflectors/"
@@ -787,9 +756,8 @@ function init()
             for k,v in pairs(reflectors[voice][scene]) do
               if v.count and v.count > 0 then
                 filename = reflector_data_folder .. k .. ".rdat"
-                print("save reflector", voice,scene,k,v.count,filename)
+                -- print("save reflector", voice,scene,k,v.count,filename)
                 v.save(v,filename)
-                -- reflection:save(reflectors[voice][scene][k],filename)
               end
             end
           end
@@ -850,7 +818,7 @@ function init()
     MAX_REFLECTORS_PER_SCENE=MAX_REFLECTORS_PER_SCENE
   })
 
-  fp_grid.init()
+  lk_grid.init()
 
   
   for i=1,eglut.num_voices do
@@ -886,10 +854,10 @@ function init()
       -- if screen_dirty == true then redraw() end
     end
     -- if grid_dirty == false then
-    fp_grid:redraw(params:get("active_screen"))
+    lk_grid:redraw(params:get("active_screen"))
     -- end
   
-  end, 1/30, -1)
+  end, 1/15, -1)
 
   redrawtimer:start()
   screen_dirty = true
@@ -967,7 +935,6 @@ function redraw()
   local scene = params:get("active_scene")
   local playing = params:get(voice .. "play" .. scene)
   screens:redraw(params:get("active_screen"),playing)
-  -- screen.peek(0, 0, 127, 64)
   screen.stroke()
   screen.update()
   screen_dirty = false
