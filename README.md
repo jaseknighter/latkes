@@ -64,6 +64,6 @@ after a gesture has been recorded, loop (L) and play (P) controls appear in the 
 # install
 from maiden:
 
-;install https://github.com/jaseknighter/latkes
+`;install https://github.com/jaseknighter/latkes`
 
 after installing, restart norns and reload the script again. 
