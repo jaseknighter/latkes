@@ -1,3 +1,5 @@
+-- norns.script.load('/home/we/dust/code/latkes/latkes.lua')
+
 -- latkes
 --
 -- llllllll.co/t/latkes
@@ -43,7 +45,7 @@ midi_helper=include("lib/midi_helper")
 lk_grid=include("lib/grid")
 grid_overrides=include("lib/grid_overrides")
 
-max_buffer_length = 30
+max_buffer_length = 15
 
 local inited=false
 
@@ -857,7 +859,7 @@ function init()
     lk_grid:redraw(params:get("active_screen"))
     -- end
   
-  end, 1/15, -1)
+  end, 1/30, -1)
 
   redrawtimer:start()
   screen_dirty = true

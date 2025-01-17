@@ -1,9 +1,10 @@
 //Waveformer: create waveforms from buffers
-//from: @markeats timber: https://github.com/markwheeler/timber/blob/master/lib/Engine_Timber.sc
 
 Waveformer {
   var lua_sender;
 	var waveformDisplayRes = 127;
+  // var samples;
+	// var loadingSample = -1;
   var buffers; //one or more arrays of buffers
 	var loadQueue;
 	var waveformQueue;
@@ -16,13 +17,14 @@ Waveformer {
 	*new {
     arg buf_arrays;
 		^super.new.init(buf_arrays);
+		// arg argServer,context,eng;
+		// ^super.new.init(argServer,context,eng);
 	}
 
 	init {
     arg buf_arrays;
     buffers=buf_arrays;
     lua_sender = NetAddr.new("127.0.0.1",10111);   
-
     //create the slots for the waveformQueue
     waveformQueue = Array.new(waveform_queue_size);
     (["init waveformer",buffers]).postln;
@@ -43,9 +45,13 @@ Waveformer {
       );
       waveformQueue.addFirst(item);
       if(generatingWaveform == "-1", {
+
         this.generateWaveforms(buf_array_ix);
       },{
+      // (["queue waveform",waveformQueue,generatingWaveform,buf_array_ix,buf_ix,sample_start,sample_length]).postln;
         this.stopWaveformGeneration(buf_array_ix,buf_ix);
+        // "stop"
+        // waveformQueue.size.postln;
       });
     });
 	}
@@ -74,7 +80,7 @@ Waveformer {
 
 	generateWaveforms {
     arg buf_array_ix;
-		var samplesPerSlice = 5; //original: 1000; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
+		var samplesPerSlice = 5; //1000; // Changes the fidelity of each 'slice' of the waveform (number of samples it checks peaks of)
 		var sendEvery = 3;
 		var totalStartSecs = Date.getDate.rawSeconds;
 
@@ -91,26 +97,33 @@ Waveformer {
 				var frame = 0, slice = 0, offset = 0;
 				var item = waveformQueue.pop;
 				var sampleId = buf_array_ix.asString ++ "-" ++ item.buf_ix.asString;
+        // var processing_data = 1;
 				generatingWaveform = sampleId;
 
 				buf = buffers[item.buf_array_ix][item.buf_ix];
+				// buf = buffers[0][0];
         buf_size = buf.numFrames;
         buf_segment_start = item.sample_start * buf_size;
         buf_segment_length = item.sample_length * buf_size;
+        // (["generate waveform",buf, buf_size, buf_segment_start, buf_segment_length]).postln;
         if(buf.isNil, {
 					("buffer could not be found for waveform generation:" + item).postln;
-				}, {          
+				}, {
+          
+
+					// numFramesRemaining = buf.numFrames;
 					numFramesRemaining = buf_segment_length;
 					numChannels = buf.numChannels;
 					chunkSize = (1048576 / numChannels).floor * numChannels;
+					// numSlices = waveformDisplayRes.min(buf.numFrames);
 					numSlices = waveformDisplayRes.min(buf_segment_length);
+					// sliceSize = buf.numFrames / waveformDisplayRes;
 					sliceSize = buf_segment_length / waveformDisplayRes;
 					framesInSliceRemaining = sliceSize;
 					stride = (sliceSize / samplesPerSlice).max(1);
 
 					waveform = Int8Array.new((numSlices * numChannels) + (numSlices % 4));
-					
-          // Process in chunks
+					// Process in chunks
 					while({
             (numFramesRemaining > 0).and
               (abandonCurrentWaveform == false)
@@ -126,6 +139,8 @@ Waveformer {
             {
               arg rawData;
               var min = 0, max = 0;
+              // numFramesRemaining = 0;
+              // /*
               while({ (frame.round * numChannels + numChannels - 1 < rawData.size).and
                 (abandonCurrentWaveform == false).and
                 (rawData.size > 0) 
@@ -161,11 +176,14 @@ Waveformer {
                   slice = slice + 1;
                 });
 
+                // 0.00001.yield;
                 // Let other sclang work happen if it's a long buffer
                 if(buf_segment_length > 1000000, {
-                  0.004.yield;
+                  // 0.004.yield;
+                  0.00004.yield;
                 });
               });
+              // */
             });
             frame = frame - (rawData.size / numChannels);
             numFramesRemaining = numFramesRemaining - (rawData.size / numChannels);
@@ -187,8 +205,10 @@ Waveformer {
 				});
 
 				// Let other sclang work happen
-				0.002.yield;
+				// 0.00004.yield;
 				// 0.1.yield;
+        // "yield".postln;
+			  generatingWaveform = "-1";
 			});
 
 			("Finished generating waveforms in" + (Date.getDate.rawSeconds - totalStartSecs).round(0.001) + "s").postln;
@@ -212,6 +232,7 @@ Waveformer {
 	}
 
 	free {
+    // buffers.do({ arg b; b.free; });
     loadQueue.do({ arg b; b.free; });
     waveformQueue.do({ arg b; b.free; });
 	}

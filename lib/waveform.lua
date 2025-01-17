@@ -73,7 +73,7 @@ function Waveform:display_waveform()
   local active_rec_level = params:get(active_voice.."live_rec_level")
   local active_pre_level = params:get(active_voice.."live_pre_level")
   
-  if sample_mode == 1 then 
+  if sample_mode == 2 then 
     screen_level = 5
   else
     screen_level = util.round((active_rec_level + active_pre_level) * 5)

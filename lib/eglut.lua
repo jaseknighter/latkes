@@ -110,7 +110,7 @@ function e:init(sample_selected_callback, num_voices, num_scenes,min_live_buffer
   self.num_voices = num_voices or self.num_voices
   self.num_scenes = num_scenes or self.num_scenes
   self.min_live_buffer_length = min_live_buffer_length or 0.1
-  self.max_buffer_length = max_buffer_length or 30
+  self.max_buffer_length = max_buffer_length
   
 end
 
