@@ -1,6 +1,6 @@
 -- latkes
---
--- llllllll.co/t/latkes
+-- v0.1.0
+-- 
 --
 -- v0.1.0_250118 (beta)
 --
@@ -727,7 +727,7 @@ function init_reflectors()
       end
     end
   end
-  
+
   -- hide scenes 2-4 initially
   showhide_reflectors(1)
   showhide_reflector_configs(1)
