@@ -632,13 +632,25 @@ function init_reflectors()
     params:set_action("refl_config_scene"..voice,function(scene) 
       showhide_reflector_configs(scene,voice.."refl_config")
     end)
+
+    local default_param_ids = {"speed","size","density","sig_spread","jitter","attack_time","subharmonics","overtones"}
     for scene=1,eglut.num_scenes do
       reflectors[voice][scene]={}
       for p_ix=1,#eglut_params do
         local param_id=eglut_params[p_ix].id
         local param_name=eglut_params[p_ix].name
         local rec_option_id=voice.."refl_config"..param_id..scene
-        params:add_option(rec_option_id,param_name,{"off","on"})
+        local default_val
+        for def_pid=1,8 do
+          default_val = default_param_ids[def_pid] == param_id and 2 or 1
+          if default_val > 1 then 
+            print("defref found "..default_val, default_param_ids[def_pid],param_id)
+            break 
+          end
+        end 
+        
+        
+        params:add_option(rec_option_id,param_name,{"off","on"}, default_val)
         params:set_action(rec_option_id,function(state) 
           local param=voice..eglut_params[p_ix].id..scene
           if state==1 then
@@ -704,6 +716,18 @@ function init_reflectors()
   --   end
   -- end)
 
+  --bang the defaults
+  for voice=1,eglut.num_voices do
+    for scene=1,eglut.num_scenes do
+      for p_ix=1,#eglut_params do
+        local param_id=eglut_params[p_ix].id
+        local rec_option_id=voice.."refl_config"..param_id..scene
+        local p = params:lookup_param(rec_option_id)
+        p:bang()
+      end
+    end
+  end
+  
   -- hide scenes 2-4 initially
   showhide_reflectors(1)
   showhide_reflector_configs(1)
@@ -847,6 +871,7 @@ function init()
 
   -- eglut:init_lattice()
   init_reflectors()
+
   print("eglut inited and params setup")
 
   screen.aa(0)
