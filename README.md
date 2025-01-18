@@ -1,3 +1,5 @@
+![](docs/screens.png)
+
 # latkes
 live and recorded quantized granulation
 
