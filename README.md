@@ -17,6 +17,9 @@ latkes expands upon @infinitedigits [granchild](https://llllllll.co/t/granchild/
 * midi-controller (optional)
 
 # documentation
+
+~ ~ ~ ~ ~  > read the [laktes user guide](docs/latkes_user_guide_v_0.1.0.pdf)
+
 screen 1 (waveform viewer)
 * E1: switch between screens
 * E2: select control
@@ -26,43 +29,7 @@ screen 2 (gesture recorder)
 * E1: switch between screens
 * E2: select control
 * E3: change control value
-* K1+E3: record param 
-
-~ ~ ~ ~ ~  > read the [laktes user guide](doc/latkes_user_guide_v_0.1.0.pdf)
-
-## getting started
-
-### process live audio
-the first voice is set to play live sounds upon script load by default.
-
-### process recorded
-select a file using the `sample` file selector in one of the `voice[x]` PARAMETERS submenus, set `mode` to `recorded`, and set `play` to `on`.
-
-### screen 1 controls (waveform)
-params controllable from the waveform screen:
-* modes: live (*lv*) and recorded (*rec*)
-* voice (*1-4*)
-* scene (*a-d*)
-* sample start and sample length (graphical controls at the bottom of the screen)
-* play (P)
-* live audio flip rec and pre settings (F)
-
-### screen 2 controls gesture recorders (aka *reflectors*)
-
-reflectors need to be setup in the PARAMETERS menu before gesture recorders will appear on the 2nd screen:
-* open a recorder configuration sub-menu (e.g. `voice1-refl config`)
-* select the scene to configure (`a`-`d`)
-* set up to eight parameters to the "on" position
-
-after setting up params, to record a gesture:
-
-* with E1, go to the gesture recorder screen
-* with E2, select one of the params that have been configured
-* with K1+E3, record a gesture
-  * recording starts when E3 is turned for the first time
-  * recording stops when K1 is released
-
-after a gesture has been recorded, loop (L) and play (P) controls appear in the ui below the record (R) control. 
+* K1+E3: record selected param 
 
 # install
 from maiden:
@@ -70,3 +37,4 @@ from maiden:
 `;install https://github.com/jaseknighter/latkes`
 
 after installing, restart norns and reload the script again. 
+
