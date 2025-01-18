@@ -1,7 +1,7 @@
 ![](docs/screens.png)
 
 # latkes
-live and recorded quantized granulation
+granular processor for live and recorded audio
 
 latkes expands upon @infinitedigits [granchild](https://llllllll.co/t/granchild/41894/) script and includes these key features:
 
@@ -17,12 +17,18 @@ latkes expands upon @infinitedigits [granchild](https://llllllll.co/t/granchild/
 * midi-controller (optional)
 
 # documentation
-* E1: switch between waveform and gesture recorder screens
+screen 1 (waveform viewer)
+* E1: switch between screens
 * E2: select control
-* K2/K3 (screen 1) or E3 (screen 2): change control value
-* K1+E3: record param (2nd screen only)
+* K2/K3: change control value
 
-[laktes user guide](doc/latkes_user_guide_v_0.1.0.pdf)
+screen 2 (gesture recorder)
+* E1: switch between screens
+* E2: select control
+* E3: change control value
+* K1+E3: record param 
+
+~ ~ ~ ~ ~  > read the [laktes user guide](doc/latkes_user_guide_v_0.1.0.pdf)
 
 ## getting started
 
