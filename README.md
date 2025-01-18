@@ -1,18 +1,13 @@
 # latkes
 live and recorded quantized granulation
 
-latkes expands upon @infinitedigits granchild script and includes these key features:
+latkes expands upon @infinitedigits [granchild](https://llllllll.co/t/granchild/41894/) script and includes these key features:
 
 * four voices/four scenes per voice
 * four playheads per voice
-* four 30s buffers per voice
+* four 15s buffers per voice
 * eight gesture recorders per voice/scene
 * attack decay grain envelopes
-
-* IMPORTANT NOTE ABOUT ECHO (GREYHOLE)....and memory 
-the greyhole effect uses quite a bit of processing power (e.g.average CPU use will go up by ~10% or more) and may not work well in all situations. using the effect with the size param set high in particular may cause issues.
-
-you can prevent the echo from taking up CPU cycles by turning the `echo on` param to `off`.
 
 # requirements
 * norns
@@ -27,12 +22,12 @@ you can prevent the echo from taking up CPU cycles by turning the `echo on` para
 
 [laktes user guide](doc/latkes_user_guide_v_0.1.0.pdf)
 
-## quickstart
+## getting started
 
-### process live sounds
+### process live audio
 the first voice is set to play live sounds upon script load by default.
 
-### process live sounds
+### process recorded
 select a file using the `sample` file selector in one of the `voice[x]` PARAMETERS submenus, set `mode` to `recorded`, and set `play` to `on`.
 
 ### screen 1 controls (waveform)

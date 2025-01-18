@@ -27,8 +27,8 @@ e.param_list={
   "volume","send","send_lag","send_lag_curve","rec_play_sync","speed","speed_lag","speed_lag_curve","seek","size","size_lag","size_lag_curve",
   "density","density_lag","density_lag_curve",
   "density_beat_divisor","density_phase_sync","density_phase_sync_one_shot",
-  "pitch","pitch_lag","pitch_lag_curve","spread_sig",
-  "spread_sig_offset1","spread_sig_offset2","spread_sig_offset3",
+  "pitch","pitch_lag","pitch_lag_curve","sig_spread",
+  "sig_spread_offset2","sig_spread_offset3","sig_spread_offset4",
   "jitter",
   "fade","attack_time","decay_time","env_shape",
   "cutoff","cutoff_lag","cutoff_lag_curve","q","pan","pan_lag","pan_lag_curve","spread_pan","spread_pan_lag","spread_pan_lag_curve",
@@ -450,17 +450,17 @@ function e:setup_params()
       params:add_control(i.."pitch_lag_curve"..scene,"pitch lag curve",controlspec.new(-10,10,"lin",0.1,0,"",1/220))
       params:set_action(i.."pitch_lag_curve"..scene,function(value) engine.pitch_lag_curve(i,value) end)
 
-      params:add_taper(i.."spread_sig"..scene,"spread sig",0,1,0)
-      params:set_action(i.."spread_sig"..scene,function(value) engine.spread_sig(i,-value) end)
+      params:add_taper(i.."sig_spread"..scene,"spread sig",0,1,0)
+      params:set_action(i.."sig_spread"..scene,function(value) engine.sig_spread(i,-value) end)
       
-      params:add_taper(i.."spread_sig_offset1"..scene,"spread sig offset 1",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset1"..scene,function(value) engine.spread_sig_offset1(i,-value/1000) end)
+      params:add_taper(i.."sig_spread_offset2"..scene,"spread sig offset 2",0,500,0,5,"ms")
+      params:set_action(i.."sig_spread_offset2"..scene,function(value) engine.sig_spread_offset2(i,-value/1000) end)
       
-      params:add_taper(i.."spread_sig_offset2"..scene,"spread sig offset 2",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset2"..scene,function(value) engine.spread_sig_offset2(i,-value/1000) end)
+      params:add_taper(i.."sig_spread_offset3"..scene,"spread sig offset 3",0,500,0,5,"ms")
+      params:set_action(i.."sig_spread_offset3"..scene,function(value) engine.sig_spread_offset3(i,-value/1000) end)
       
-      params:add_taper(i.."spread_sig_offset3"..scene,"spread sig offset 3",0,500,0,5,"ms")
-      params:set_action(i.."spread_sig_offset3"..scene,function(value) engine.spread_sig_offset3(i,-value/1000) end)
+      params:add_taper(i.."sig_spread_offset4"..scene,"spread sig offset 4",0,500,0,5,"ms")
+      params:set_action(i.."sig_spread_offset4"..scene,function(value) engine.sig_spread_offset4(i,-value/1000) end)
       
       params:add_taper(i.."jitter"..scene,"jitter",0,500,0,5,"ms")
       params:set_action(i.."jitter"..scene,function(value) engine.jitter(i,value/1000) end)
