@@ -247,7 +247,7 @@ function e:setup_params()
         on_eglut_file_loaded(i)
       end
     end)
-    params:add_control(i.."sample_length","length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,10,"s",0.01/self.max_buffer_length))
+    params:add_control(i.."sample_length","length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,15,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
       if value + params:get(i.."sample_start") > self.max_buffer_length then 
         params:set(i.."sample_length", self.max_buffer_length - params:get(i.."sample_start"))

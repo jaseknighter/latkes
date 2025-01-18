@@ -29,12 +29,8 @@ Engine_Latkes : CroneEngine {
 
   free {
     "free latkes!!!!".postln;  
-    // "with sourcream and apple sauce!!!!".postln;  
-    s.queryAllNodes;
-
     eglut.free;
+    eglut = nil;
     s.options.memSize=8192; 
-    // s.options.numBuffers=1024; 
-    
   }
 }

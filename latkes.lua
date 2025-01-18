@@ -1,13 +1,22 @@
--- norns.script.load('/home/we/dust/code/latkes/latkes.lua')
-
 -- latkes
 --
 -- llllllll.co/t/latkes
 --
--- v0.1.0_241118 (beta)
+-- v0.1.0_250118 (beta)
 --
 --    ▼ instructions below ▼
--- instructions
+--
+-- screen 1 (waveform)
+-- * E1: switch between screens
+-- * E2: select control
+-- * K2/K3: change control value
+--
+-- screen 2 (gesture recorder)
+-- * E1: switch between screens
+-- * E2: select control
+-- * E3: change control value
+-- * K1+E3: record param 
+
 
 ----------------------------
 -- documentation:
@@ -652,7 +661,7 @@ function init_reflectors()
   
   end
 
-  params:add_group("copy reflectors",6)
+  params:add_group("copy reflectors",5)
   params:add_number("copy_reflectors_voice_from","from voice",1,num_voices,1)
   params:add_option("copy_reflectors_scene_from","from scene",reflector_scene_labels,1)
   params:add_number("copy_reflectors_voice_to","to voice",1,num_voices,1)
@@ -947,10 +956,9 @@ function cleanup ()
   reflectors=nil
   -- if redrawtimer then metro.free(redrawtimer) end
   eglut:cleanup()
-
+  eglut = nil
   --reinstate og params functions
   paramset.write = og_pset_write
   paramset.read = og_pset_read
   paramset.delete = og_pset_delete
-  
 end
