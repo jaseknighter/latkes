@@ -3,16 +3,23 @@
 EGlut {
   classvar ngvoices = 4;
   
+  var max_buffer_length = 30;
+  var default_sample_length=10;
+
   var s;
   var context;
   var pg;
-	var <effect;
-  var <pre_live_buffers;
-  var <live_buffers;
-	var <file_buffers;
-	var <gvoices;
+	var effect;
+  var pre_live_buffers;
+  var live_buffers;
+  var live_buffers_lofi;
+  var file_buffers;
+  var redraw_file_buffer = true;
+	var gvoices;
   var active_voice;
-	var <grainVoiceOutBusses;
+  var voice_modes;
+  
+  var <grainVoiceOutBusses;
 	var <effectSendBus;
 	var <effectReturnBusL;
 	var <effectReturnBusR;
@@ -23,6 +30,7 @@ EGlut {
 	var <rec_play_overlaps;
 	var <levels;
 	var <gr_envbufs;
+  
   var updating_buffers=false;
   var prev_sig_pos1=0,prev_sig_pos2=0,prev_sig_pos3=0,prev_sig_pos4=0;
 
@@ -31,8 +39,6 @@ EGlut {
 
   var osc_funcs;
   var recorders;
-  var max_buffer_length = 15;
-  var default_sample_length=10;
   var max_size=5;
     
   var <waveformer;
@@ -49,36 +55,25 @@ EGlut {
     var end = (sample_start + sample_length)/max_buffer_length;
     recorders[voice].set(
       \buf_win_start, start, 
-      \buf_win_end, end
+      \buf_win_end, end,
     );
     recorders[voice + ngvoices].set(
       \buf_win_start, start, 
-      \buf_win_end, end
+      \buf_win_end, end,
     );
     
     gvoices[voice].set(
       \buf_win_start, start,
       \buf_win_end, end,
     );    
-    // Routine({
-    //   0.1.wait;
-    //   gvoices[voice].set(
-    //     \sync_to_rec_head, 0,
-    //     \pos,rec_phases[voice].getSynchronous,
-    //     \sync_to_rec_head, 1  
-    //   );
-    //   0.1.wait;
-    //   gvoices[voice].set(
-    //     \sync_to_rec_head, 0,
-    //   );
-    // }).play;
 
+    redraw_file_buffer = true;
+    
 	}
 
   // disk read
 	readDisk { arg voice, path, sample_start, sample_length;
     var startframe = 0;
-    // if (File.exists(path), {
     if (path.notNil, {
       // load stereo files and duplicate GrainBuf for stereo granulation
       var newbuf,newbuf2;
@@ -133,6 +128,7 @@ EGlut {
         gvoices[voice].set(\buf, file_buffers[voice]);
         gvoices[voice].set(\buf2, file_buffers[voice+ngvoices]);
     });
+    
 	}
 
 
@@ -142,16 +138,15 @@ EGlut {
 		arg argServer, engContext, eng;
     var thisEngine;
     "init eglut".postln;
-    osc_funcs=Dictionary.new();
+    osc_funcs = Dictionary.new();
     
     lua_sender = NetAddr.new("127.0.0.1",10111);   
-    sc_sender=NetAddr.new("127.0.0.1",57120);   
+    sc_sender = NetAddr.new("127.0.0.1",57120);   
     
-		s=argServer;
+		s = argServer;
     context = engContext;
     thisEngine = eng;
 
-    
     reset_density_phases = Array.fill(ngvoices, { 0 });
     reset_density_phases_one_shot = Array.fill(ngvoices, { 0 });
     
@@ -159,6 +154,7 @@ EGlut {
       Bus.control(context.server)
     });
     
+    voice_modes = Array.fill(ngvoices, { arg i; 0 });
     
     rec_play_overlaps = Array.fill(ngvoices, { arg i;
       Bus.control(context.server,4)
@@ -172,6 +168,11 @@ EGlut {
       Buffer.alloc(s,s.sampleRate * max_buffer_length,1);
     });
 
+    live_buffers_lofi = Array.fill(ngvoices*2, { arg i;
+      var lofi_rate = s.sampleRate/s.options.blockSize;
+      Buffer.alloc(s,lofi_rate * max_buffer_length,1);
+    });
+
     s.sync;
 
     file_buffers = Array.fill(ngvoices*2, { arg i;
@@ -180,7 +181,7 @@ EGlut {
 
     s.sync;
 
-    waveformer = Waveformer.new([live_buffers,file_buffers]);
+    waveformer = Waveformer.new([live_buffers_lofi,file_buffers]);
 
     s.sync;
 
@@ -190,19 +191,22 @@ EGlut {
           mode=0, //0=use external audio, 1=use internal audio from internal_in
           internal_in, //audio bus to use use eglut voices/effects as the audio source
           buf=0,  rate=1,
-          pos=0, buf_win_start=0,buf_win_end=1,t_reset_pos=0,
+          buf_lofi, lofi_rate,
+          pos=0, buf_win_start=0,buf_win_end=1,
+          t_reset_pos=0,
           rec_level=1,pre_level=0,
           rec_phase,
           rec_play_overlap;
       var buf_dur,buf_pos;
       var sig = (mode < 1 * SoundIn.ar(in)) + (mode > 0 * In.ar(internal_in));
 
+      var recording_offset = buf_win_start*max_buffer_length*SampleRate.ir;
+      var recording_offset_lofi = buf_win_start*max_buffer_length*lofi_rate;
+
       var rec_buf_reset = Impulse.kr(
             freq:((buf_win_end-buf_win_start)*max_buffer_length).reciprocal,
-            phase:pos
+            phase:buf_win_start
           );
-
-      var recording_offset = buf_win_start*max_buffer_length*SampleRate.ir;
       
       var overlaps = In.kr(rec_play_overlap,5);
       var overlap0 = overlaps[0];
@@ -213,19 +217,24 @@ EGlut {
 
       var direction = overlaps[4];
       
-      SendReply.kr(overlaps_trig, "/recorder_over_sigpos", [voice,overlap0,overlap1,overlap2,overlap3,direction]);
+      SendReply.kr((rec_buf_reset + (voice < ngvoices)) > 1, "/rec_buf_reset", [voice]);
+      SendReply.kr((overlaps_trig + (voice < ngvoices)) > 1, "/recorder_over_sigpos", [voice,overlap0,overlap1,overlap2,overlap3,direction]);
 
       buf_dur = BufDur.ir(buf);
 
       buf_pos = Phasor.kr(trig: rec_buf_reset,
         rate: buf_dur.reciprocal / ControlRate.ir * rate,
-        start:buf_win_start, end:buf_win_end, resetPos: pos);
+        start:buf_win_start, end:buf_win_end, resetPos: buf_win_start);
       
-      // RecordBuf.ar(sig, buf, offset: 1024, 
       RecordBuf.ar(sig, buf, offset: recording_offset, 
                    recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, 
                    trigger: rec_buf_reset, doneAction: 0);
       
+      //lofi recording for waveform generation
+      RecordBuf.kr(sig, buf_lofi, offset: recording_offset_lofi, 
+                   recLevel: rec_level, preLevel: pre_level, run: 1.0, loop: 1.0, 
+                   trigger: rec_buf_reset, doneAction: 0);
+
       Out.kr(rec_phase, buf_pos);
     }).add;
 
@@ -305,7 +314,6 @@ EGlut {
       pos = ((t_reset_pos < 1) * pos) + ((t_reset_pos > 0) * pos.linlin(0,1,buf_win_start,buf_win_end));
       win_size = buf_win_end-buf_win_start-(size/max_buffer_length);
       b_frames = BufFrames.ir(buf);
-      
       reset_grain_trig = ((reset_grain_trig >= 1) + (density_phase_reset >= 1)) >= 1;
 
       density = VarLag.kr(density,density_lag,density_lag_curve);
@@ -484,7 +492,7 @@ EGlut {
 
       SendReply.kr(Impulse.kr(15), "/eglut_sigs_pos", [voice,window_sig_pos1, window_sig_pos2, window_sig_pos3, window_sig_pos4]);
       // constantly queue waveform generation if mode "live" (but not "recorded")
-      SendReply.kr(Impulse.kr(5), "/queue_waveform_generation", [mode,voice,buf_win_start,buf_win_end-buf_win_start]);
+      SendReply.kr(Impulse.kr(7), "/queue_waveform_generation", [mode,voice,buf_win_start,buf_win_end-buf_win_start,active_sig_pos1]);
 
       sig = 0.25 * (GrainBuf.ar(
             numChannels: 2, 
@@ -496,7 +504,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//96,
+            maxGrains:8,//16,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -509,7 +517,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//96,
+            maxGrains:8,//16,//96,
             mul:main_vol*0.5,
           )+
 
@@ -524,7 +532,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -537,7 +545,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -550,7 +558,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -563,7 +571,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -576,7 +584,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -589,13 +597,9 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:main_vol*0.5,
-          )
-
-
-
-          +
+          )+
           GrainBuf.ar(
             numChannels: 2, 
             trigger:grain_trig, 
@@ -606,7 +610,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch/3,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:subharmonic_vol,
           )+
           GrainBuf.ar(
@@ -619,7 +623,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:subharmonic_vol,
           )+
         GrainBuf.ar(
@@ -632,7 +636,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:overtone_vol*0.7,
           )+
           GrainBuf.ar(
@@ -645,7 +649,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:overtone_vol*0.7,
           )+
         GrainBuf.ar(
@@ -658,7 +662,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:overtone_vol*0.3,
           )+
           GrainBuf.ar(
@@ -671,7 +675,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:overtone_vol*0.3,
       ));
 
@@ -685,7 +689,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//96,
+            maxGrains:8,//16,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -698,7 +702,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//96,
+            maxGrains:8,//16,//96,
             mul:main_vol*0.5,
           )+
 
@@ -713,7 +717,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -726,7 +730,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -739,7 +743,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -752,7 +756,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -765,7 +769,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -778,13 +782,9 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:main_vol*0.5,
-          )
-
-
-
-          +
+          )+
           GrainBuf.ar(
             numChannels: 2, 
             trigger:grain_trig, 
@@ -795,7 +795,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch/3,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:subharmonic_vol,
           )+
           GrainBuf.ar(
@@ -808,7 +808,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:16,//72,
+            maxGrains:8,//16,//72,
             mul:subharmonic_vol,
           )+
         GrainBuf.ar(
@@ -821,7 +821,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:overtone_vol*0.7,
           )+
           GrainBuf.ar(
@@ -834,7 +834,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:16,//32,
+            maxGrains:8,//16,//32,
             mul:overtone_vol*0.7,
           )+
         GrainBuf.ar(
@@ -847,7 +847,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:overtone_vol*0.3,
           )+
           GrainBuf.ar(
@@ -860,7 +860,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:16,
+            maxGrains:8,//16,
             mul:overtone_vol*0.3,
       ));
   		
@@ -949,6 +949,8 @@ EGlut {
     pg = ParGroup.head(context.xg);
     
     //instantiate the live recorders and grain voices
+    (["lofi rate: s.sampleRate/s.options.blockSize",s.sampleRate/s.options.blockSize]).postln;
+    "instantiate the live recorders and grain voices".postln;
     s.bind({ 
       recorders = Array.newClear(ngvoices*2);
       gvoices = Array.newClear(ngvoices);
@@ -958,6 +960,8 @@ EGlut {
             \voice, i,
             \pre_buf,pre_live_buffers[i],
             \buf,live_buffers[i],
+            \buf_lofi,live_buffers_lofi[i],
+            \lofi_rate, s.sampleRate/s.options.blockSize,
             \in,0,
             \rec_phase,rec_phases[i].index,
             \rec_play_overlap,rec_play_overlaps[i].index
@@ -968,6 +972,8 @@ EGlut {
             \voice, i,
             \pre_buf,pre_live_buffers[i+ngvoices],
             \buf,live_buffers[i+ngvoices],
+            \buf_lofi,live_buffers_lofi[i],
+            \lofi_rate, s.sampleRate/s.options.blockSize,
             \in,1,
             \rec_phase,rec_phases[i+ngvoices].index,
             \rec_play_overlap,rec_play_overlaps[i].index
@@ -1092,11 +1098,11 @@ EGlut {
       var voice = msg[1] - 1;
       var rec_phase;
         rec_phase=rec_phases[voice].getSynchronous;
-        gvoices[voice].set(\speed,1,\pos, rec_phase/2,\rec_play_sync, msg[2], \sync_to_rec_head, 1);
+        gvoices[voice].set(\speed,1,\pos, rec_phase,\rec_play_sync, msg[2], \sync_to_rec_head, 1);
         recorders[voice].set(\t_reset_pos, 1);
         recorders[voice+ngvoices].set(\t_reset_pos, 1);
 
-        ["set rec_play_sync",rec_phase/2].postln;
+        ["set rec_play_sync",rec_phase].postln;
         Routine({
           0.1.wait;
           gvoices[voice].set(\sync_to_rec_head, 0);
@@ -1309,9 +1315,8 @@ EGlut {
           Routine({
             gvoices[voice].set(\gr_envbuf, buf);
             gr_envbufs[voice] = buf;
-            0.1.wait;
             updating_buffers = false;
-            2.wait;
+            10.wait;
             oldbuf.free;
 
           }).play;
@@ -1415,6 +1420,7 @@ EGlut {
       OSCFunc.new({ |msg,time,addr,recvPort|
         (["active_voice",msg[1]]).postln;
         active_voice=msg[1];
+        redraw_file_buffer = true;
       },"/sc_eglut/set_active_voice");
     );
 
@@ -1454,11 +1460,17 @@ EGlut {
         var voice=msg[1];
         var mode=msg[2]; // 0: live, 1: recorded
         var buf_array_ix;
-        (["set mode",voice,mode]);
+        voice_modes[voice] = mode;
+        (["set mode",voice,mode,voice_modes[voice]]).postln;
         gvoices[voice].set(\mode, mode);
 
-        if (mode < 1, { buf_array_ix = 0 }, { buf_array_ix = 1 });
-        waveformer.stopWaveformGeneration(buf_array_ix,voice);        
+        if (mode < 1, { 
+          buf_array_ix = 0; 
+        }, { 
+          redraw_file_buffer = true; 
+          buf_array_ix = 1 
+        });
+        // waveformer.stopWaveformGeneration(buf_array_ix,voice);        
       },"/sc_osc/set_mode");
     );   
 
@@ -1526,6 +1538,16 @@ EGlut {
       });
     }, "/density_phase_completed");
 
+    OSCdef(\rec_buf_reset, {|msg| 
+      var voice = msg[3].asInteger;
+      // var pos1 = msg[4].asInteger;
+      // var pos2 = msg[5].asInteger;
+      // var pos3 = msg[6].asInteger;
+      // var pos4 = msg[7].asInteger;
+      // var direction = msg[8];
+      if (voice < 1,{ (["rec_buf_reset"]).postln; });
+    }, "/rec_buf_reset");
+
     OSCdef(\recorder_over_sigpos, {|msg| 
       var voice = msg[3].asInteger;
       var pos1 = msg[4].asInteger;
@@ -1546,11 +1568,20 @@ EGlut {
       var voice = msg[4];
       var sample_start = msg[5];
       var sample_length = msg[6];
+      var sig_pos = msg[7];
       var buf_array_ix;
       if (mode < 1, { buf_array_ix = 0 }, { buf_array_ix = 1 });
       if (voice == active_voice,{
-      // (["waveformer.queueWaveformGeneration",voice,mode,live_buffers[0],buf_array_ix]).postln;
-        waveformer.queueWaveformGeneration(buf_array_ix,voice,sample_start,sample_length);        
+        if (mode < 1,{
+          waveformer.queueWaveformGeneration(buf_array_ix,voice,sample_start,sample_length,sig_pos);        
+        });
+        if ((mode > 0).and(redraw_file_buffer == true), { 
+          redraw_file_buffer = false;
+          if ((voice_modes[voice] > 0),{
+            waveformer.queueWaveformGeneration(buf_array_ix,voice,sample_start,sample_length,sig_pos);        
+            // "redraw file buffer".postln;
+          });
+        });
       });
     }, "/queue_waveform_generation");
 

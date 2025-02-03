@@ -242,11 +242,8 @@ function e:setup_params()
       local sample_start = params:get(i.."sample_start")
       local sample_length = params:get(i.."sample_length")
       osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})
-      
-      if params:get(i.."sample_mode") == 2 then
-        on_eglut_file_loaded(i)
-      end
     end)
+    -- params:add_control(i.."sample_length","length",controlspec.new(MIN_SAMPLE_LENGTH,15,"lin",0.1,15,"s",0.01/self.max_buffer_length))
     params:add_control(i.."sample_length","length",controlspec.new(MIN_SAMPLE_LENGTH,self.max_buffer_length,"lin",0.1,15,"s",0.01/self.max_buffer_length))
     params:set_action(i.."sample_length",function(value)
       if value + params:get(i.."sample_start") > self.max_buffer_length then 
@@ -256,10 +253,6 @@ function e:setup_params()
       local sample_start = params:get(i.."sample_start")
       local sample_length = params:get(i.."sample_length")
       osc.send( { "localhost", 57120 }, "/sc_osc/set_sample_position",{i-1, sample_start,sample_length})            
-      
-      if params:get(i.."sample_mode") == 2 then
-        on_eglut_file_loaded(i)
-      end
     end)
     local sample_modes={"live stream","recorded"}
     params:add_option(i.."sample_mode","mode",sample_modes,1)

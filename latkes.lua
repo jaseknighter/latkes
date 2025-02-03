@@ -1,7 +1,7 @@
 -- latkes
 --
 -- 
--- v0.1.0_250118 (beta)
+-- v0.1.1_2500203 (beta)
 --
 --
 --    ▼ instructions below ▼
@@ -54,7 +54,7 @@ midi_helper=include("lib/midi_helper")
 lk_grid=include("lib/grid")
 grid_overrides=include("lib/grid_overrides")
 
-max_buffer_length = 15
+max_buffer_length = 30
 
 local inited=false
 
@@ -123,13 +123,32 @@ local function store_waveform(voice, sample_mode, offset, padding, waveform_blob
   redraw_waveform = true
 end
 
+function waveform_refresh(voice)
+  -- note: this is a very indirect way and awkward way to refresh the waveform
+  -- but is seems to work consistently
+  clock.run(function() 
+    local pl = params:lookup_param(voice..'sample_length')
+    local pb = params:lookup_param(voice..'sample_start')
+    clock.sleep(0.25); 
+    pl:bang()
+    clock.sleep(0.25); 
+    pb:bang()
+    clock.sleep(0.25); 
+    pl:bang()
+  end)
+end
+
+--------------------------
+-- when an audio file has been loaded, refresh the waveform display
+--------------------------
+function on_eglut_file_loaded(voice)
+  -- print("on eglut file loaded")
+  waveform_refresh(voice)
+end
+
 --------------------------
 -- osc functions
 --------------------------
-
-function on_eglut_file_loaded(voice)
-  -- print("on eglut file loaded")
-end
 
 function osc.event(path,args,from)
   if inited == false then return end  
@@ -192,6 +211,7 @@ function setup_params()
     end
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
+    waveform_refresh(voice)
   end)
   params:add_number("active_voice","active voice",1,num_voices,1)
   params:set_action("active_voice", function(x) 
@@ -211,6 +231,7 @@ function setup_params()
     -- eglut:update_scene(voice,scene)
     channel = params:get("voice"..voice.."scene"..scene.."_cc_channel")
     midi_helper.update_midi_devices(channel,true)
+    waveform_refresh(voice)
   end)
   params:add_number("active_scene","active scene",1,num_scenes,1)
   params:set_action("active_scene", function(x) 

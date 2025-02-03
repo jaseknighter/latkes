@@ -49,6 +49,7 @@ Waveformer {
         this.generateWaveforms(buf_array_ix);
       },{
       // (["queue waveform",waveformQueue,generatingWaveform,buf_array_ix,buf_ix,sample_start,sample_length]).postln;
+      // (["queue waveform",sample_start,sample_length,buffers[buf_array_ix][buf_ix]]).postln;
         this.stopWaveformGeneration(buf_array_ix,buf_ix);
         // "stop"
         // waveformQueue.size.postln;
@@ -105,7 +106,7 @@ Waveformer {
         buf_size = buf.numFrames;
         buf_segment_start = item.sample_start * buf_size;
         buf_segment_length = item.sample_length * buf_size;
-        // (["generate waveform",buf, buf_size, buf_segment_start, buf_segment_length]).postln;
+        // (["generate waveform", buf_size, buf_segment_start, buf_segment_length,buf]).postln;
         if(buf.isNil, {
 					("buffer could not be found for waveform generation:" + item).postln;
 				}, {
@@ -179,8 +180,8 @@ Waveformer {
                 // 0.00001.yield;
                 // Let other sclang work happen if it's a long buffer
                 if(buf_segment_length > 1000000, {
-                  // 0.004.yield;
-                  0.00004.yield;
+                  "long buffer".postln;
+                  // 0.00004.yield;
                 });
               });
               // */

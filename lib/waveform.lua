@@ -19,7 +19,7 @@ function Waveform:set_samples(offset, padding, waveform_blob)
   for i = 1, string.len(waveform_blob) - padding do    
     local value = string.byte(string.sub(waveform_blob, i, i + 1))
     value = util.linlin(0, 126, -1, 1, value)
-    
+    -- print(offset,padding,waveform_blob)
     local frame_index = math.ceil(i / 2) + offset
     if i % 2 > 0 then
       self.samples[frame_index] = {}
