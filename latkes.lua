@@ -1,7 +1,7 @@
 -- latkes
 --
 -- 
--- v0.1.1_2500203 (beta)
+-- v0.1.2_2500204 (beta)
 --
 --
 --    ▼ instructions below ▼
@@ -51,8 +51,6 @@ eglut=include("lib/eglut")
 waveform=include("lib/waveform")
 screens=include("lib/screens")
 midi_helper=include("lib/midi_helper")
-lk_grid=include("lib/grid")
-grid_overrides=include("lib/grid_overrides")
 
 max_buffer_length = 30
 
@@ -149,7 +147,7 @@ end
 --------------------------
 -- osc functions
 --------------------------
-
+print("define latkes osc")
 function osc.event(path,args,from)
   if inited == false then return end  
   if path == "/lua_eglut/engine_waveform" then
@@ -172,6 +170,10 @@ function osc.event(path,args,from)
     on_eglut_file_loaded(voice, duration)
   end
 end
+
+lk_grid=include("lib/grid")
+grid_overrides=include("lib/grid_overrides")
+
 
 function setup_waveforms()
   for i=1,#waveform_names do
@@ -665,7 +667,7 @@ function init_reflectors()
         for def_pid=1,8 do
           default_val = default_param_ids[def_pid] == param_id and 2 or 1
           if default_val > 1 then 
-            print("defref found "..default_val, default_param_ids[def_pid],param_id)
+            -- print("defref found "..default_val, default_param_ids[def_pid],param_id)
             break 
           end
         end 

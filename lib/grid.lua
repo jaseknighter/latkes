@@ -4,16 +4,6 @@
 
 local lk_grid = {}
 
-lk_grid.g = grid.connect()
-
-lk_grid.key_data = {}
-lk_grid.key_data.long_presses = {}
-
-lk_grid.key_data.reflector_selector = nil
-lk_grid.key_data.lag = nil
-
-lk_grid.key_data.selected_reflectors = {}
-
 lk_grid.Key = {}
 function lk_grid.Key:new()
     local k = setmetatable({},{__index=lk_grid.Key})
@@ -23,6 +13,113 @@ function lk_grid.Key:new()
     k.led_target=0
     k.led_current=0
     return k
+end
+
+--------------------------------------------------
+--- init function
+--------------------------------------------------
+function lk_grid.init()
+    lk_grid.g = grid.connect()
+
+    lk_grid.key_data = {}
+    lk_grid.key_data.long_presses = {}
+
+    lk_grid.key_data.reflector_selector = nil
+    lk_grid.key_data.lag = nil
+
+    lk_grid.key_data.selected_reflectors = {}
+
+    lk_grid.g.key = function(x,y,z)
+        lk_grid.key(x,y,z)
+    end
+    
+    for col=1,16 do
+        lk_grid.key_data[col] = {}
+        for row=1,8 do
+            lk_grid.key_data[col][row] = lk_grid.Key:new()
+        end
+    end
+    
+    for col=1,MAX_REFLECTORS_PER_SCENE do
+        lk_grid.key_data.selected_reflectors[col] = nil
+        lk_grid.ui_groups["reflector"..col] = {
+            led_on=10,
+            led_off=3,
+            col_start=col,
+            col_end=col,
+            row_start=1,
+            row_end=7,
+            k_type="group_single",
+            on_release=lk_grid.set_reflector,
+            direction="v"
+        }
+    end
+end
+
+--------------------------------------------------
+--- grid key function
+--------------------------------------------------
+lk_grid.key = function(x,y,z)
+    if z == 1 then --pressed
+        lk_grid.key_data[x][y].long_press = clock.run(function() 
+            lk_grid.key_data[x][y].state="pressed"
+            clock.sleep(0.5)
+            if lk_grid.key_data[x][y].state=="pressed" then
+                lk_grid.key_data[x][y].type="long"
+            end
+            -- check for long press buttons
+            lk_grid:set_long_presses()
+        end)
+
+        for group_name, group_data in pairs(lk_grid.ui_groups) do
+            local is_temp = group_data.k_type == "group_single_temp" 
+            if is_temp and group_data.on_press then
+                local col_start    = group_data.col_start
+                local col_end      = group_data.col_end
+                local row_start    = group_data.row_start
+                local row_end      = group_data.row_end
+                if x >= col_start and x <= col_end and y >= row_start and y <= row_end then
+                    if group_data.k_type == "group_multi_temp" then
+                        group_data.on_press(x - col_start + 1,y - row_start + 1,x,y)
+                    else
+                        group_data.on_press(x - col_start + 1,y - row_start + 1,x,y)
+                    end
+                end
+            end    
+        end    
+    elseif z == 0 then -- released
+        lk_grid.key_data[x][y].state="unpressed"
+
+        -- check for long press buttons
+        lk_grid:set_long_presses()
+
+        -- short and temp press processing
+        for group_name, group_data in pairs(lk_grid.ui_groups) do
+            local is_short = lk_grid.key_data[x][y].type=="short"
+            local is_temp = group_data.k_type == "group_single_temp"
+            if (is_short or is_temp) and group_data.on_release then
+                local col_start    = group_data.col_start
+                local col_end      = group_data.col_end
+                local row_start    = group_data.row_start
+                local row_end      = group_data.row_end
+                local selector     = group_data.p_selector and group_data.p_selector or group_data.k_selector
+                if x >= col_start and x <= col_end and y >= row_start and y <= row_end then
+                    if group_data.k_type == "group_multi" then
+                        group_data.on_release(x - col_start + 1,y - row_start + 1,x,y,selector)
+                    else
+                        group_data.on_release(x - col_start + 1,y - row_start + 1,x,y,selector)
+                    end
+                end
+            end            
+        end    
+
+        if lk_grid.key_data[x][y].long_press then 
+            clock.cancel(lk_grid.key_data[x][y].long_press)
+            lk_grid.key_data[x][y].long_press=nil
+            lk_grid.key_data[x][y].type="short"
+        end
+
+    end
 end
 
 --------------------------------------------------
@@ -357,6 +454,215 @@ function lk_grid.set_rec_pre_levels(col_ix,row_ix,x,y)
 end
 
 --------------------------------------------------
+--- define ui groups
+--------------------------------------------------
+
+lk_grid.ui_groups = {
+    voices = {
+        led_on=15,
+        led_off=5,
+        col_start=15,
+        col_end=15,
+        row_start=1,
+        row_end=4,
+        k_type="group_multi",
+        p_selector="active_voice",
+        on_release=lk_grid.set_voice,
+        direction="v"
+    },
+    scenes = {
+        led_on=15,
+        led_off=5,
+        col_start=16,
+        col_end=16,
+        row_start=1,
+        row_end=4,
+        k_type="group_multi",
+        p_selector="active_scene",
+        on_release=lk_grid.set_scene,
+        direction="v"
+    },
+    playing = {
+        led_on=15,
+        led_off=5,
+        col_start=15,
+        col_end=16,
+        row_start=6,
+        row_end=6,
+        k_type="group_single",
+        p_selector="play",
+        p_type="voice_scene",
+        on_release=lk_grid.set_playing,
+        direction=nil
+    },
+    mode = {
+        led_on=15,
+        led_off=5,
+        col_start=15,
+        col_end=16,
+        row_start=7,
+        row_end=7,
+        k_type="group_single",
+        p_selector="sample_mode",
+        p_type="voice",
+        on_release=lk_grid.set_mode,
+        direction="h"
+    },
+    screens = {
+        led_on=15,
+        led_off=5,
+        col_start=15,
+        col_end=16,
+        row_start=8,
+        row_end=8,
+        k_type="group_single",
+        p_selector="active_screen",
+        on_release=lk_grid.set_screen,
+        direction="h"
+    },
+    reflector_record = {
+        led_on=15,
+        led_off=5,
+        col_start=9,
+        col_end=9,
+        row_start=6,
+        row_end=6,
+        k_type="single",
+        p_selector="record",
+        p_type="voice_reflector_scene",
+        on_release=lk_grid.set_reflector_states,
+        direction=nil
+    },
+    reflector_loop = {
+        led_on=15,
+        led_off=5,
+        col_start=9,
+        col_end=9,
+        row_start=7,
+        row_end=7,
+        k_type="single",
+        p_selector="loop",
+        p_type="voice_reflector_scene",
+        on_release=lk_grid.set_reflector_states,
+        direction=nil
+    },
+    reflector_play = {
+        led_on=15,
+        led_off=5,
+        col_start=9,
+        col_end=9,
+        row_start=8,
+        row_end=8,
+        k_type="single",
+        p_selector="play",
+        p_type="voice_reflector_scene",
+        on_release=lk_grid.set_reflector_states,
+        direction=nil
+    },        
+    reflector_selector = {
+        led_on=15,
+        led_off=6,
+        col_start=1,
+        col_end=8,
+        row_start=8,
+        row_end=8,
+        k_type="group_multi",
+        -- p_selector="active_screen",
+        k_selector=lk_grid.get_reflector_selector,
+        on_release=lk_grid.set_reflector_selector,
+        -- on_release=lk_grid.clear_reflector_selector,
+        direction="h"
+    },
+    -- lag = {
+    --     led_on=15,
+    --     led_off=3,
+    --     col_start=9,
+    --     col_end=9,
+    --     row_start=1,
+    --     row_end=4,
+    --     k_type="group_single_temp",
+    --     k_selector=lk_grid.get_lag,
+    --     on_press=lk_grid.set_lag,
+    --     on_release=lk_grid.clear_lag,
+    --     direction="v"
+    -- },        
+    density_phase_sync_one_shot = {
+        led_on=15,
+        led_off=8,
+        col_start=13,
+        col_end=13,
+        row_start=8,
+        row_end=8,
+        k_type="group_single_temp",
+        k_selector=lk_grid.get_density_phase_sync_one_shot,
+        on_press=lk_grid.set_density_phase_sync_one_shot,
+        on_release=lk_grid.clear_density_phase_sync_one_shot,
+        direction=nil
+    },
+    rec_play_sync = {
+        led_on=15,
+        led_off=5,
+        col_start=14,
+        col_end=14,
+        row_start=8,
+        row_end=8,
+        k_type="group_single_temp",
+        k_selector=lk_grid.get_rec_play_sync,
+        on_press=lk_grid.set_rec_play_sync,
+        on_release=lk_grid.clear_rec_play_sync,
+        direction=nil
+    },
+    volume = {
+        led_on=15,
+        led_off=5,
+        col_start=11,
+        col_end=11,
+        row_start=1,
+        row_end=8,
+        k_type="group_single",
+        k_selector=lk_grid.get_volume_send,
+        on_release=lk_grid.set_volume_send,
+        direction="v"
+    },
+    send = {
+        led_on=15,
+        led_off=5,
+        col_start=12,
+        col_end=12,
+        row_start=1,
+        row_end=8,
+        k_type="group_single",
+        k_selector=lk_grid.get_volume_send,
+        on_release=lk_grid.set_volume_send,
+        direction="v"
+    },
+    live_rec_level = {
+        led_on=15,
+        led_off=5,
+        col_start=13,
+        col_end=13,
+        row_start=1,
+        row_end=6,
+        k_type="group_single",
+        k_selector=lk_grid.get_rec_pre_levels,
+        on_release=lk_grid.set_rec_pre_levels,
+        direction="v"
+    },
+    live_pre_level = {
+        led_on=15,
+        led_off=5,
+        col_start=14,
+        col_end=14,
+        row_start=1,
+        row_end=6,
+        k_type="group_single",
+        k_selector=lk_grid.get_rec_pre_levels,
+        on_release=lk_grid.set_rec_pre_levels,
+        direction="v"
+    },
+   
+}
+--------------------------------------------------
 --- generic grid functions
 --------------------------------------------------
 function lk_grid:get_ui_group(col,row)
@@ -408,306 +714,11 @@ function lk_grid:set_long_presses()
 
 end
 
-lk_grid.g.key = function(x,y,z)
-    if z == 1 then --pressed
-        lk_grid.key_data[x][y].long_press = clock.run(function() 
-            lk_grid.key_data[x][y].state="pressed"
-            clock.sleep(0.5)
-            if lk_grid.key_data[x][y].state=="pressed" then
-                lk_grid.key_data[x][y].type="long"
-            end
-            -- check for long press buttons
-            lk_grid:set_long_presses()
-        end)
-
-        for group_name, group_data in pairs(lk_grid.ui_groups) do
-            local is_temp = group_data.k_type == "group_single_temp" 
-            if is_temp and group_data.on_press then
-                local col_start    = group_data.col_start
-                local col_end      = group_data.col_end
-                local row_start    = group_data.row_start
-                local row_end      = group_data.row_end
-                if x >= col_start and x <= col_end and y >= row_start and y <= row_end then
-                    if group_data.k_type == "group_multi_temp" then
-                        group_data.on_press(x - col_start + 1,y - row_start + 1,x,y)
-                    else
-                        group_data.on_press(x - col_start + 1,y - row_start + 1,x,y)
-                    end
-                end
-            end    
-        end    
-    elseif z == 0 then -- released
-        lk_grid.key_data[x][y].state="unpressed"
-
-        -- check for long press buttons
-        lk_grid:set_long_presses()
-
-        -- short and temp press processing
-        for group_name, group_data in pairs(lk_grid.ui_groups) do
-            local is_short = lk_grid.key_data[x][y].type=="short"
-            local is_temp = group_data.k_type == "group_single_temp"
-            if (is_short or is_temp) and group_data.on_release then
-                local col_start    = group_data.col_start
-                local col_end      = group_data.col_end
-                local row_start    = group_data.row_start
-                local row_end      = group_data.row_end
-                local selector     = group_data.p_selector and group_data.p_selector or group_data.k_selector
-                if x >= col_start and x <= col_end and y >= row_start and y <= row_end then
-                    if group_data.k_type == "group_multi" then
-                        group_data.on_release(x - col_start + 1,y - row_start + 1,x,y,selector)
-                    else
-                        group_data.on_release(x - col_start + 1,y - row_start + 1,x,y,selector)
-                    end
-                end
-            end            
-        end    
-
-        if lk_grid.key_data[x][y].long_press then 
-            clock.cancel(lk_grid.key_data[x][y].long_press)
-            lk_grid.key_data[x][y].long_press=nil
-            lk_grid.key_data[x][y].type="short"
-        end
-
-    end
-end
 
 function lk_grid:get_num_cols_rows(col_start,col_end,row_start,row_end)
     local num_cols = col_end - col_start + 1
     local num_rows = row_end - row_start + 1
     return num_cols,num_rows
-end
-
---------------------------------------------------
---- init functions
---------------------------------------------------
-function lk_grid.init()
-    for col=1,16 do
-        lk_grid.key_data[col] = {}
-        for row=1,8 do
-            lk_grid.key_data[col][row] = lk_grid.Key:new()
-        end
-    end
-
-    lk_grid.ui_groups = {
-        voices = {
-            led_on=15,
-            led_off=5,
-            col_start=15,
-            col_end=15,
-            row_start=1,
-            row_end=4,
-            k_type="group_multi",
-            p_selector="active_voice",
-            on_release=lk_grid.set_voice,
-            direction="v"
-        },
-        scenes = {
-            led_on=15,
-            led_off=5,
-            col_start=16,
-            col_end=16,
-            row_start=1,
-            row_end=4,
-            k_type="group_multi",
-            p_selector="active_scene",
-            on_release=lk_grid.set_scene,
-            direction="v"
-        },
-        playing = {
-            led_on=15,
-            led_off=5,
-            col_start=15,
-            col_end=16,
-            row_start=6,
-            row_end=6,
-            k_type="group_single",
-            p_selector="play",
-            p_type="voice_scene",
-            on_release=lk_grid.set_playing,
-            direction=nil
-        },
-        mode = {
-            led_on=15,
-            led_off=5,
-            col_start=15,
-            col_end=16,
-            row_start=7,
-            row_end=7,
-            k_type="group_single",
-            p_selector="sample_mode",
-            p_type="voice",
-            on_release=lk_grid.set_mode,
-            direction="h"
-        },
-        screens = {
-            led_on=15,
-            led_off=5,
-            col_start=15,
-            col_end=16,
-            row_start=8,
-            row_end=8,
-            k_type="group_single",
-            p_selector="active_screen",
-            on_release=lk_grid.set_screen,
-            direction="h"
-        },
-        reflector_record = {
-            led_on=15,
-            led_off=5,
-            col_start=9,
-            col_end=9,
-            row_start=6,
-            row_end=6,
-            k_type="single",
-            p_selector="record",
-            p_type="voice_reflector_scene",
-            on_release=lk_grid.set_reflector_states,
-            direction=nil
-        },
-        reflector_loop = {
-            led_on=15,
-            led_off=5,
-            col_start=9,
-            col_end=9,
-            row_start=7,
-            row_end=7,
-            k_type="single",
-            p_selector="loop",
-            p_type="voice_reflector_scene",
-            on_release=lk_grid.set_reflector_states,
-            direction=nil
-        },
-        reflector_play = {
-            led_on=15,
-            led_off=5,
-            col_start=9,
-            col_end=9,
-            row_start=8,
-            row_end=8,
-            k_type="single",
-            p_selector="play",
-            p_type="voice_reflector_scene",
-            on_release=lk_grid.set_reflector_states,
-            direction=nil
-        },        
-        reflector_selector = {
-            led_on=15,
-            led_off=6,
-            col_start=1,
-            col_end=8,
-            row_start=8,
-            row_end=8,
-            k_type="group_multi",
-            -- p_selector="active_screen",
-            k_selector=lk_grid.get_reflector_selector,
-            on_release=lk_grid.set_reflector_selector,
-            -- on_release=lk_grid.clear_reflector_selector,
-            direction="h"
-        },
-        -- lag = {
-        --     led_on=15,
-        --     led_off=3,
-        --     col_start=9,
-        --     col_end=9,
-        --     row_start=1,
-        --     row_end=4,
-        --     k_type="group_single_temp",
-        --     k_selector=lk_grid.get_lag,
-        --     on_press=lk_grid.set_lag,
-        --     on_release=lk_grid.clear_lag,
-        --     direction="v"
-        -- },        
-        density_phase_sync_one_shot = {
-            led_on=15,
-            led_off=8,
-            col_start=13,
-            col_end=13,
-            row_start=8,
-            row_end=8,
-            k_type="group_single_temp",
-            k_selector=lk_grid.get_density_phase_sync_one_shot,
-            on_press=lk_grid.set_density_phase_sync_one_shot,
-            on_release=lk_grid.clear_density_phase_sync_one_shot,
-            direction=nil
-        },
-        rec_play_sync = {
-            led_on=15,
-            led_off=5,
-            col_start=14,
-            col_end=14,
-            row_start=8,
-            row_end=8,
-            k_type="group_single_temp",
-            k_selector=lk_grid.get_rec_play_sync,
-            on_press=lk_grid.set_rec_play_sync,
-            on_release=lk_grid.clear_rec_play_sync,
-            direction=nil
-        },
-        volume = {
-            led_on=15,
-            led_off=5,
-            col_start=11,
-            col_end=11,
-            row_start=1,
-            row_end=8,
-            k_type="group_single",
-            k_selector=lk_grid.get_volume_send,
-            on_release=lk_grid.set_volume_send,
-            direction="v"
-        },
-        send = {
-            led_on=15,
-            led_off=5,
-            col_start=12,
-            col_end=12,
-            row_start=1,
-            row_end=8,
-            k_type="group_single",
-            k_selector=lk_grid.get_volume_send,
-            on_release=lk_grid.set_volume_send,
-            direction="v"
-        },
-        live_rec_level = {
-            led_on=15,
-            led_off=5,
-            col_start=13,
-            col_end=13,
-            row_start=1,
-            row_end=6,
-            k_type="group_single",
-            k_selector=lk_grid.get_rec_pre_levels,
-            on_release=lk_grid.set_rec_pre_levels,
-            direction="v"
-        },
-        live_pre_level = {
-            led_on=15,
-            led_off=5,
-            col_start=14,
-            col_end=14,
-            row_start=1,
-            row_end=6,
-            k_type="group_single",
-            k_selector=lk_grid.get_rec_pre_levels,
-            on_release=lk_grid.set_rec_pre_levels,
-            direction="v"
-        },
-       
-    }
-    
-    for col=1,MAX_REFLECTORS_PER_SCENE do
-        lk_grid.key_data.selected_reflectors[col] = nil
-        lk_grid.ui_groups["reflector"..col] = {
-            led_on=10,
-            led_off=3,
-            col_start=col,
-            col_end=col,
-            row_start=1,
-            row_end=7,
-            k_type="group_single",
-            on_release=lk_grid.set_reflector,
-            direction="v"
-        }
-    end
 end
 
 --------------------------------------------------
