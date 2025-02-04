@@ -7,7 +7,7 @@ latkes expands upon @infinitedigits [granchild](https://llllllll.co/t/granchild/
 
 * four voices/four scenes per voice
 * four playheads per voice
-* four 15s buffers per voice
+* four 30s buffers per voice
 * eight gesture recorders per voice/scene
 * attack decay grain envelopes
 
