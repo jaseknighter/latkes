@@ -4,7 +4,7 @@ EGlut {
   classvar ngvoices = 4;
   
   var max_buffer_length = 30;
-  var default_sample_length=10;
+  var default_sample_length=15;
 
   var s;
   var context;
@@ -504,7 +504,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//96,
+            maxGrains:32,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -517,7 +517,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//96,
+            maxGrains:32,//96,
             mul:main_vol*0.5,
           )+
 
@@ -532,7 +532,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -545,7 +545,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -558,7 +558,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -571,7 +571,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -584,7 +584,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -597,7 +597,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -610,7 +610,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch/3,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:subharmonic_vol,
           )+
           GrainBuf.ar(
@@ -623,7 +623,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:subharmonic_vol,
           )+
         GrainBuf.ar(
@@ -636,7 +636,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:overtone_vol*0.7,
           )+
           GrainBuf.ar(
@@ -649,7 +649,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:overtone_vol*0.7,
           )+
         GrainBuf.ar(
@@ -662,7 +662,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:overtone_vol*0.3,
           )+
           GrainBuf.ar(
@@ -675,7 +675,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:overtone_vol*0.3,
       ));
 
@@ -689,7 +689,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//96,
+            maxGrains:32,//96,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -702,7 +702,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//96,
+            maxGrains:32,//96,
             mul:main_vol*0.5,
           )+
 
@@ -717,7 +717,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -730,7 +730,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -743,7 +743,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -756,7 +756,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:main_vol*0.5,
           )+
         GrainBuf.ar(
@@ -769,7 +769,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -782,7 +782,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:main_vol*0.5,
           )+
           GrainBuf.ar(
@@ -795,7 +795,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch/3,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:subharmonic_vol,
           )+
           GrainBuf.ar(
@@ -808,7 +808,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch/2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//72,
+            maxGrains:32,//72,
             mul:subharmonic_vol,
           )+
         GrainBuf.ar(
@@ -821,7 +821,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:overtone_vol*0.7,
           )+
           GrainBuf.ar(
@@ -834,7 +834,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone1,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,//32,
+            maxGrains:32,//32,
             mul:overtone_vol*0.7,
           )+
         GrainBuf.ar(
@@ -847,7 +847,7 @@ EGlut {
             pan: pan_sig,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:overtone_vol*0.3,
           )+
           GrainBuf.ar(
@@ -860,7 +860,7 @@ EGlut {
             pan: pan_sig2,
             rate:pitch*overtone2,
             envbufnum:gr_envbuf,
-            maxGrains:8,//16,
+            maxGrains:32,
             mul:overtone_vol*0.3,
       ));
   		
@@ -1545,7 +1545,7 @@ EGlut {
       // var pos3 = msg[6].asInteger;
       // var pos4 = msg[7].asInteger;
       // var direction = msg[8];
-      if (voice < 1,{ (["rec_buf_reset"]).postln; });
+      // if (voice < 1,{ (["rec_buf_reset"]).postln; });
     }, "/rec_buf_reset");
 
     OSCdef(\recorder_over_sigpos, {|msg| 
@@ -1555,12 +1555,12 @@ EGlut {
       var pos3 = msg[6].asInteger;
       var pos4 = msg[7].asInteger;
       var direction = msg[8];
-      if (voice < 1,{ (["recorder_over_sigpos",voice,direction]).postln; });
+      // if (voice < 1,{ (["recorder_over_sigpos",voice,direction]).postln; });
     }, "/recorder_over_sigpos");
 
     OSCdef(\switch, {|msg| 
       var voice = msg[3].asInteger;
-      if (voice < 1,{ (["switch",msg]).postln; });
+      // if (voice < 1,{ (["switch",msg]).postln; });
     }, "/switch");
 
     OSCdef(\queue_waveform_generation, {|msg| 

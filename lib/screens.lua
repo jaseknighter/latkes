@@ -117,6 +117,7 @@ end
 
 
 function screens:set_selected_ui_area(ix,screen)
+  print("set_selected_ui_area",ix,screen)
   local active_screen = params:get("active_screen")
   if ((active_screen==1 and screen == nil) or screen==1) and self.p1ui.ui_areas[ix] then
     self.p1ui.selected_ui_area_ix=ix
@@ -277,7 +278,7 @@ function screens:enc(n,d)
 
     elseif n==2 then
       local ix=util.clamp(self.p2ui.selected_ui_area_ix+d,1,self.p2ui.num_ui_areas)
-
+      
       --wacky code to skip over reflector buttons when they are invisible
       local ui_area_type = self:get_active_ui_area_type()
       if d > 0 and ui_area_type == "reflectorbutton" then

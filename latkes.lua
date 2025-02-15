@@ -1,7 +1,7 @@
 -- latkes
 --
 -- 
--- v0.1.2_2500204 (beta)
+-- v0.1.3_2500215 (beta)
 --
 --
 --    ▼ instructions below ▼
@@ -53,6 +53,8 @@ screens=include("lib/screens")
 midi_helper=include("lib/midi_helper")
 
 max_buffer_length = 30
+
+pause_redraw = false
 
 local inited=false
 
@@ -569,6 +571,7 @@ function init_reflectors()
     params:add_option("rec_scene"..voice,"scene",reflector_scene_labels,1)
     params:set_action("rec_scene"..voice,function(scene) 
       local prior_scene=reflectors_selected_params[voice].prior_scene
+      pause_redraw = false
       if prior_scene then
         for k,v in pairs(reflectors_selected_params[voice][prior_scene]) do
           local id=v.id
@@ -580,7 +583,14 @@ function init_reflectors()
         local param=params:lookup_param(voice.."-"..reflector.."play"..scene)
         param:bang()
       end
-      reflectors_selected_params[voice].prior_scene=scene
+
+      clock.run(function() 
+        clock.sleep(0.01)
+        screens.p2ui.selected_ui_area_ix = 3
+        screens.p2ui.selected_ui_area = "scene"
+        reflectors_selected_params[voice].prior_scene=scene
+        pause_redraw = false
+      end)
     end)
     
     for scene=1,eglut.num_scenes do
@@ -908,7 +918,7 @@ function init()
       params:set("active_scene",scene)
     end
     
-    if (norns.menu.status() == false) then
+    if (norns.menu.status() == false and pause_redraw == false) then
       redraw()
       -- if screen_dirty == true then redraw() end
     end
@@ -916,7 +926,7 @@ function init()
     lk_grid:redraw(params:get("active_screen"))
     -- end
   
-  end, 1/30, -1)
+  end, 1/15, -1)
 
   redrawtimer:start()
   screen_dirty = true

@@ -20,8 +20,8 @@ Engine_Latkes : CroneEngine {
   alloc {
     s=context.server;
 
-    s.options.memSize_(65536 * 4);
-    ["increasing memsize",s.options.memSize].postln;
+    // s.options.memSize_(65536 * 4);
+    // ["increasing memsize",s.options.memSize].postln;
     eglut=EGlut.new(s,context,this);
 
     "eglut inited".postln;
